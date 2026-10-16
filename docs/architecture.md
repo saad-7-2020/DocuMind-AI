@@ -1,7 +1,8 @@
 # DocuMind AI — Architecture (Phase 1)
 
-> Status: **Draft for review.** No application code exists yet. Once you have reviewed this document
-> (especially §13, the questions), Phase 2 starts from it.
+> Status: **Reviewed, rev. 2.** The §13 decisions are made: **French first** (English is a post-v1
+> optimization), **Groq** as the LLM provider, and a local **NVIDIA GTX 1660 Super (6 GB)** for embedding and
+> reranking. No application code exists yet. Phase 2 starts from this document.
 
 This document has two jobs:
 
@@ -25,7 +26,7 @@ This document has two jobs:
 10. [Evaluation design](#10-evaluation-design)
 11. [Observability, security, reliability](#11-observability-security-reliability)
 12. [Defaults chosen and why](#12-defaults-chosen-and-why)
-13. [Questions for your review](#13-questions-for-your-review)
+13. [Review decisions](#13-review-decisions)
 14. [Phase plan and acceptance criteria](#14-phase-plan-and-acceptance-criteria)
 15. [Glossary](#15-glossary)
 
@@ -141,6 +142,14 @@ flowchart LR
 | `worker` | Same Python package, different entrypoint: polls the job table and runs the indexing pipeline. |
 | `frontend` | React + TS, built by Vite and served by nginx (Phase 5). |
 
+**GPU placement.** The LLM runs remotely (Groq), so the local GPU (GTX 1660 Super, 6 GB, CUDA compute
+capability 7.5) is used only for the **embedder and reranker**. In fp16 these need roughly 1.2 GB each, so both
+fit with room to spare. The device is chosen by config (`MODEL_DEVICE=auto|cuda|cpu`), and everything also runs
+on CPU, which is what tests and CI use. **Phases 2–4 run `api` and `worker` natively on Windows** (a `uv`
+virtualenv with CUDA-enabled PyTorch) with only `db` in Docker. That's the simplest way to use the GPU. GPU
+access *inside* containers (Docker Desktop's WSL2 backend + NVIDIA driver, compose `gpus:` reservation) comes
+in Phase 5 as an optional compose profile.
+
 **Why a separate worker and not FastAPI `BackgroundTasks`?** OCR and embedding can take minutes for a large
 scanned PDF. Running them inside the API process ties up its workers, the work is lost if the process restarts,
 and it can't be retried. A worker process with a **durable job table** fixes all three.
@@ -166,7 +175,7 @@ flowchart TD
     D -.-> W[Worker claims job]
     W --> F[Extract per page<br/>PyMuPDF / python-docx / text decoder]
     F --> G{Page has a usable<br/>text layer?}
-    G -- no --> H[OCR that page<br/>Tesseract default]
+    G -- no --> H[OCR that page<br/>Tesseract, lang fra]
     G -- yes --> I
     H --> I[Clean + normalize<br/>Unicode NFKC, de-hyphenate,<br/>strip repeated headers/footers]
     I --> J[Persist document_pages]
@@ -204,6 +213,14 @@ characters *and* the page contains an image, rasterize it at 300 DPI and OCR it.
 `extraction_method` (`text_layer` | `ocr` | `docx` | `plain`) and OCR confidence, so we can later ask
 "do OCR'd pages retrieve worse?", which is a good eval slice.
 
+OCR language is `fra` by default (Tesseract's French model; `fra+eng` when English support arrives). Without the
+right language pack, Tesseract misreads accented characters (`é` → `e'`, `à` → `a`), and every misread word is
+a missed keyword match.
+
+**Document language** is detected at ingestion (`lingua-language-detector` on the extracted text) and stored on
+the document. In v1, anything that isn't French is still indexed but flagged, because its stemming and
+answer quality aren't tuned yet.
+
 > **RAG concept: garbage in, garbage out.** Retrieval can't find what extraction mangled. Typical PDF problems
 > are hyphenation across lines ("informa-\ntion"), running headers and footers repeated on every page (they
 > pollute every chunk and inflate keyword matches), ligatures (`ﬁ`), and multi-column layouts read in the
@@ -218,8 +235,11 @@ characters *and* the page contains an image, rasterize it at 300 DPI and OCR it.
   piece is ≤ `CHUNK_MAX_TOKENS` (default **350**). Then merge neighbors up to that bound.
 - **Overlap** of `CHUNK_OVERLAP_TOKENS` (default **50**, about 15%) between consecutive chunks.
 - **Tokens are counted with the embedding model's own tokenizer.** That tokenizer is what silently truncates
-  input (bge-small truncates at 512 tokens), so counting with any other tokenizer risks embedding only part
-  of a chunk.
+  input, so counting with any other tokenizer risks embedding only part of a chunk. It also matters for
+  French: a multilingual tokenizer (XLM-RoBERTa, used by bge-m3) splits French text into more tokens per word
+  than an English tokenizer would, so "350 tokens" is less French text than you might expect.
+- **Sentence splitting is French-aware** (`pysbd` with `language="fr"`), so abbreviations such as "M.",
+  "art.", "p. ex." or "cf." don't end a sentence.
 - Every chunk keeps `page_start`, `page_end`, `char_start`, `char_end` (offsets into the concatenated
   document text) and the nearest heading (`section_path`). Chunks may cross a page boundary; the citation then
   shows a page range ("pp. 4–5").
@@ -244,13 +264,23 @@ diverge), *parent-child / small-to-big* (retrieve small chunks, send their paren
 
 ### 4.4 Embedding
 
-- **Default model:** `BAAI/bge-small-en-v1.5` via Sentence Transformers. It has 384 dimensions, ~33M
-  parameters, runs fine on CPU, and has a strong retrieval quality to cost ratio.
-- **Asymmetric encoding:** BGE expects queries prefixed with an instruction
-  (`"Represent this sentence for searching relevant passages: "`) and passages without it (E5 uses
-  `query:` / `passage:` instead). The `Embedder` interface therefore has two methods,
-  `embed_documents()` and `embed_query()`. Mixing them up is a classic silent bug that costs several points of
-  recall.
+- **Default model:** `BAAI/bge-m3` via Sentence Transformers, dense output, **1024 dimensions** (~568M
+  parameters). It's one of the strongest open multilingual retrievers, it's good on French, and it handles
+  long inputs (up to 8,192 tokens). On the 1660 Super in fp16 it embeds a few hundred chunks per minute. On CPU,
+  query-time embedding still takes only a fraction of a second, but bulk indexing is slow, which is why
+  indexing uses the GPU.
+- **Why not an English model with a French fallback?** Embedding models only place texts well in the
+  languages they were trained on. An English-only model maps French text to poorly organized regions of the
+  vector space, and retrieval quality collapses. Multilingual models also give *cross-lingual* retrieval: a
+  French question can match an English passage. That will matter when English documents are added later.
+- **Asymmetric encoding:** many models expect a different prefix for queries and passages (E5 uses
+  `query:` / `passage:`; English BGE models use a query instruction). bge-m3 needs **no** prefix for dense
+  retrieval, but the `Embedder` interface still has two methods, `embed_documents()` and `embed_query()`, so
+  swapping in a model that *does* need prefixes can't silently break retrieval. Mixing them up is a classic
+  silent bug that costs several points of recall.
+- *Learning note:* bge-m3 can also produce **sparse lexical weights** (a learned, BM25-like signal) from the
+  same forward pass. That's a candidate replacement for Postgres FTS as the "keyword" side of hybrid search,
+  to be tested in Phase 4.
 - Vectors are **L2-normalized**, so cosine similarity equals the dot product, and we use pgvector's cosine
   distance operator `<=>`.
 - Every chunk records `embedding_model`. The query path refuses to search chunks embedded by a different model
@@ -319,8 +349,26 @@ LIMIT :k;
 
 ### 5.2 Keyword retrieval
 
-Postgres full-text search: `websearch_to_tsquery('english', :q)` against a GIN-indexed `tsvector`, ranked by
-`ts_rank_cd`.
+Postgres full-text search: `websearch_to_tsquery(:fts_config, :q)` against a GIN-indexed `tsvector`, ranked
+by `ts_rank_cd`. In v1, `:fts_config` is **`documind_fr`**, a custom text-search configuration defined in the
+migration:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE TEXT SEARCH CONFIGURATION documind_fr (COPY = french);
+ALTER TEXT SEARCH CONFIGURATION documind_fr
+    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+```
+
+> **RAG concept: stemming and accents in French.** Keyword search matches *normalized tokens*, not raw words.
+> The French Snowball stemmer reduces "résiliation", "résilier" and "résilié" to a shared stem, so
+> morphological variants match. Adding `unaccent` *before* stemming makes `resiliation` (typed without accents,
+> very common in queries) match `résiliation`, and it absorbs OCR accent errors. The cost is a few false
+> merges (`pêche` vs `péché`), which is acceptable for recall-oriented first-stage retrieval. Stop words ("le",
+> "de", "et") are dropped by the `french` config.
+>
+> The FTS config is stored **per chunk** (`chunks.fts_config`, §8), so adding English later only adds a second
+> config; the French chunks are never touched.
 
 > **RAG concept: why dense alone is not enough.** Embeddings capture *meaning*. They are good at paraphrase
 > ("cancel my subscription" ≈ "terminate the agreement") but weak at **exact tokens**: product codes
@@ -351,13 +399,16 @@ retriever gets 1/61 ≈ 0.0164. Agreement wins.
 
 ### 5.4 Reranking (optional, config `RERANK_ENABLED`)
 
-Default model: `BAAI/bge-reranker-base` (cross-encoder). It rescores the top 30 fused candidates as
-`(question, chunk)` pairs, then we keep the top 6.
+Default model: `BAAI/bge-reranker-v2-m3` (multilingual cross-encoder, same family as the embedder, good on
+French). It rescores the top 30 fused candidates as `(question, chunk)` pairs, then we keep the top 6. It runs
+on the GPU. The CPU fallback is the smaller multilingual
+`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, because the large model is too slow per query on CPU.
 
 > **RAG concept: bi-encoder vs cross-encoder.** A cross-encoder reads the question and the passage
 > **together** through every layer, so it can judge "does this passage answer *this* question?" much more
 > precisely than comparing two independent vectors. It can't be precomputed, though: every query costs one
-> forward pass per candidate (30 pairs is about 0.3–1.5 s on CPU). So the standard design is a **cascade**: a
+> forward pass per candidate (30 pairs is well under a second on the GPU and several seconds on CPU for a model
+> this size; we will measure both). So the standard design is a **cascade**: a
 > cheap, high-recall stage (hybrid, top 50) followed by an expensive, high-precision stage (rerank, top 6).
 > Reranking is **off by default until Phase 4 shows it helps on our data.** We'll have a measured latency
 > versus nDCG tradeoff to point to.
@@ -372,8 +423,8 @@ Default model: `BAAI/bge-reranker-base` (cross-encoder). It rescores the top 30 
 - Each source is wrapped and labelled:
 
 ```
-<source id="S1" document="contract.pdf" pages="4-5">
-...chunk text...
+<source id="S1" document="contrat.pdf" pages="4-5">
+...texte du chunk...
 </source>
 ```
 
@@ -382,21 +433,40 @@ Default model: `BAAI/bge-reranker-base` (cross-encoder). It rescores the top 30 
 
 ### 5.6 Generation with structured output
 
-The LLM is asked to return JSON validated by a Pydantic model:
+**Provider: Groq**, through the OpenAI-compatible endpoint (`https://api.groq.com/openai/v1`). We implement
+**one** `OpenAICompatLLM` class. Groq is just a `base_url` + `GROQ_API_KEY` + model ID in config, and the same
+class works later with OpenAI, Ollama or vLLM. The API key lives only in `.env` (git-ignored). Never paste it in
+chat or commit it.
+
+**Default generator model: `openai/gpt-oss-120b`.** It's a Groq *production* model (131k context), and it
+supports **strict `json_schema` structured outputs**, meaning Groq constrains decoding so the response always
+matches our schema. That removes a whole class of parse failures. `llama-3.3-70b-versatile` is the
+alternative. It only supports JSON-object mode (valid JSON, schema not enforced), so it goes through our
+Pydantic validation plus the repair retry. Model IDs are config, and Phase 2 checks them against Groq's
+`GET /models` at startup, because providers retire models.
+
+> Groq caveats that shape the design: structured outputs **can't be combined with streaming** (so
+> `/v1/query/stream` streams only after validation, or isn't offered for structured answers), and in strict
+> mode every field must be `required`, with optional values expressed as nullable types. Our schema is
+> written that way.
+
+The LLM must return JSON validated by a Pydantic model:
 
 ```json
 {
-  "answer": "The notice period is 30 days [S2].",
-  "citations": [{"source_id": "S2", "quote": "either party may terminate with thirty (30) days written notice"}],
+  "answer": "Le préavis de résiliation est de 30 jours [S2].",
+  "citations": [{"source_id": "S2", "quote": "chacune des parties peut résilier le contrat moyennant un préavis de trente (30) jours"}],
   "insufficient_evidence": false,
   "reason": null
 }
 ```
 
-Rules in the prompt: answer only from sources; cite every claim with `[S#]`; each citation includes a short
-**verbatim** quote; if the sources don't contain the answer, set `insufficient_evidence: true` and give no
-answer. On a JSON parse failure we retry **once** with the validation error included. On a second failure we
-return a 502-class error, not malformed output.
+Prompt rules (the system prompt is **written in French**, which gives more natural French answers than
+English instructions do): answer only from the sources; **answer in the language of the question** (French in
+v1); cite every claim with `[S#]`; each citation includes a short **verbatim** quote copied from the source,
+never translated; if the sources don't contain the answer, set `insufficient_evidence: true` and give no
+answer. On a JSON or validation failure we retry **once** with the validation error included. On a second
+failure we return a 502-class error, not malformed output.
 
 ### 5.7 Citation validation (post-generation guardrail)
 
@@ -521,7 +591,7 @@ RAG/
 │   │   ├── indexing/                 # service.py (pages → chunks → vectors → DB)
 │   │   ├── retrieval/                # dense.py, keyword.py, fusion.py, hybrid.py, filters.py, rerank/
 │   │   ├── generation/
-│   │   │   ├── llm/                  # base.py, anthropic.py, openai_compat.py, fake.py
+│   │   │   ├── llm/                  # base.py, openai_compat.py (Groq), fake.py
 │   │   │   ├── prompts/              # versioned prompt templates (prompt_version is logged)
 │   │   │   ├── context.py
 │   │   │   ├── citations.py
@@ -597,7 +667,7 @@ CREATE TABLE documents (
     error_code     text,                          -- machine-readable, e.g. 'pdf_encrypted'
     page_count     int,
     ocr_page_count int NOT NULL DEFAULT 0,
-    language       text NOT NULL DEFAULT 'en',
+    language       text NOT NULL DEFAULT 'fr',    -- detected at ingestion (ISO 639-1)
     title          text,
     metadata       jsonb NOT NULL DEFAULT '{}',   -- author, created date from file props, user tags
     created_at     timestamptz NOT NULL DEFAULT now(),
@@ -633,8 +703,9 @@ CREATE TABLE chunks (
     token_count      int  NOT NULL,
     chunker_config_hash text NOT NULL,
     embedding_model  text NOT NULL,
-    embedding        vector(384) NOT NULL,        -- dim fixed by the model; see note below
-    tsv              tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED,
+    embedding        vector(1024) NOT NULL,       -- bge-m3; dim fixed by the model, see note below
+    fts_config       regconfig NOT NULL DEFAULT 'documind_fr',  -- per-chunk language config (§5.2)
+    tsv              tsvector GENERATED ALWAYS AS (to_tsvector(fts_config, text)) STORED,
     created_at       timestamptz NOT NULL DEFAULT now(),
     UNIQUE (document_id, chunk_index)
 );
@@ -722,7 +793,10 @@ CREATE TABLE eval_items (
 - **Why vectors in the same table as the chunk text?** One `JOIN`-free row per chunk, one transaction, one
   backup, and filters plus vector search in a single SQL statement. That's the main argument for pgvector
   over a separate vector database at this scale (up to a few million chunks).
-- **Changing the embedding model** means changing `vector(384)`. That's a migration plus a full re-embed, which
+- **The migration also creates** the `unaccent` extension and the `documind_fr` text-search configuration
+  (§5.2). `to_tsvector(regconfig, text)` is immutable, so it can be used in a generated column with a
+  per-row config.
+- **Changing the embedding model** means changing `vector(1024)`. That's a migration plus a full re-embed, which
   is the honest cost of switching models in any vector store. For side-by-side model comparison in Phase 4,
   eval runs use a **separate eval database** that is indexed from scratch per config, so the production index
   stays untouched.
@@ -768,7 +842,7 @@ Upload progress in the UI has two parts: **bytes sent** (browser upload progress
 
 ```json
 {
-  "question": "What is the termination notice period?",
+  "question": "Quel est le préavis de résiliation ?",
   "filters": { "document_ids": ["…"], "mime_types": ["application/pdf"], "created_after": null },
   "retrieval": { "mode": "hybrid", "top_k": 6, "rerank": false },
   "debug": false
@@ -795,7 +869,7 @@ Upload progress in the UI has two parts: **bytes sent** (browser upload progress
   }],
   "usage": { "input_tokens": 2310, "output_tokens": 96, "cost_usd": 0.0084 },
   "latency_ms": { "retrieval": 41, "rerank": 0, "llm": 1720, "total": 1790 },
-  "model": { "embedder": "BAAI/bge-small-en-v1.5", "llm": "claude-sonnet-5-5", "prompt_version": "answer-v1" },
+  "model": { "embedder": "BAAI/bge-m3", "llm": "groq/openai/gpt-oss-120b", "prompt_version": "answer-fr-v1" },
   "diagnostics": null
 }
 ```
@@ -807,7 +881,8 @@ closest chunks found, flagged as "related, not supporting".
 With `debug: true`, `diagnostics` contains the ranked lists per stage (`dense`, `keyword`, `fused`,
 `reranked`, `context`) with scores. That's the most useful learning tool in the project.
 
-Errors: 400 validation, 422 schema, 429 rate limit, 504 LLM timeout, 502 LLM bad output after retry.
+Errors: 400 validation, 422 schema, 429 rate limit (ours, or Groq's passed through with `Retry-After`), 504 LLM
+timeout, 502 LLM bad output after retry.
 
 | Other endpoints | Purpose |
 |---|---|
@@ -838,12 +913,15 @@ Errors: 400 validation, 422 schema, 429 rate limit, 504 LLM timeout, 502 LLM bad
 - **Gold evidence is stored as document + page + text span, not chunk IDs.** Chunk IDs change whenever chunk
   size changes, and gold labels must survive that so chunking configs can be compared. A retrieved chunk
   counts as *relevant* if it's from the same document and its text contains (fuzzy match) the gold span.
+- **Language:** v1 benchmark is **French** — French documents, French questions, French reference answers.
+  An English (and cross-lingual FR↔EN) slice is added with the English optimization phase.
 - **Target size:** ~80 questions over ~15–25 documents. About 20% are **unanswerable** but *plausible*
   (on-topic questions whose answer isn't in the corpus; that's what tests abstention). The set includes
   question types that stress different retrievers: exact identifiers (keyword-friendly), paraphrases
   (dense-friendly), multi-hop (two evidence spans), questions about OCR'd pages, and table-like content.
-- **Corpus:** public-domain or permissively licensed documents (e.g. government reports, open standards,
-  public-domain books), plus a few pages printed to image to create genuine scanned PDFs. Licenses are
+- **Corpus:** public-domain or permissively licensed **French** documents (e.g. French public-administration
+  reports and guides published under the Licence Ouverte / Etalab, legal texts from Légifrance, public-domain
+  books from Wikisource or Gallica), plus a few pages printed to image to create genuine scanned PDFs. Licenses are
   recorded in `eval/corpus/SOURCES.md`.
 - **Creation:** an LLM may *draft* candidate questions, but **every item is human-verified**: the answer is
   checked against the page and the evidence span is copied from the source. Items not verified carry
@@ -875,6 +953,16 @@ Retrieval metrics are computed only on answerable questions (unanswerable ones h
 > **fixed judge model** different from the generator where possible, judge temperature 0, judge model
 > recorded in `model_versions`, spot-check ~20 judgments by hand and report the agreement rate, and prefer the
 > deterministic custom metrics (citation accuracy, abstention) when they disagree.
+>
+> **Our setup:** generator `openai/gpt-oss-120b`, judge `llama-3.3-70b-versatile` (a different model family,
+> also on Groq, so one API key covers both). RAGAS's built-in judge prompts are in English. We'll check that
+> they grade French answers sensibly using the manual spot-check, and adapt the prompts to French if not.
+>
+> **Rate limits:** Groq enforces per-model limits on requests and tokens per minute and per day, and the free
+> tier's limits are tight. One run is about 80 generation calls plus several judge calls per item, so the
+> runner has a **client-side rate limiter** (read from config, matching the limits shown in your Groq console),
+> honors `Retry-After` on 429, and **caches** LLM responses keyed by (model, prompt, params) so a re-run or a
+> crashed run doesn't pay twice. Cached and live calls are flagged in the report.
 
 ### 10.3 Experiments
 
@@ -925,7 +1013,8 @@ don't claim a win that the interval doesn't support.
 
 - **Timeouts** on every external call: LLM 60 s, embedding API 30 s, OCR 120 s per page, overall job timeout.
 - **Bounded retries** with exponential backoff and jitter, only for retryable errors (timeouts, 429, 5xx),
-  max 3 attempts. LLM output-validation failures get exactly 1 repair retry.
+  max 3 attempts. A 429 from Groq honors its `Retry-After` header (capped) instead of the generic backoff. LLM
+  output-validation failures get exactly 1 repair retry.
 - **Idempotency:** deterministic chunk IDs, and the worker deletes a document's existing chunks before
   inserting new ones (in the same transaction). A retried job never duplicates data.
 - **Stale job recovery:** a job whose `locked_at` is older than the job timeout is reclaimable.
@@ -938,7 +1027,8 @@ don't claim a win that the interval doesn't support.
 
 | Area | Default | Why | Alternatives (and when to switch) |
 |---|---|---|---|
-| Python tooling | Python 3.12, **uv**, ruff, mypy, pytest | uv installs Python itself (none is installed on this machine yet) and gives reproducible lockfiles; fast. | Poetry/pip-tools: fine, slower. |
+| Python tooling | Python **3.13** (installed), **uv**, ruff, mypy, pytest | uv gives a pinned lockfile and fast installs, and it uses the existing 3.13 interpreter. 3.13 is supported by PyTorch, Sentence Transformers and the rest of the stack. | Poetry/pip-tools: fine, slower. |
+| Hardware | NVIDIA GTX 1660 Super (6 GB) for embedding + reranking, fp16; `MODEL_DEVICE=auto` | Indexing with bge-m3 on CPU is slow; the GPU makes the large multilingual models practical. Tests stay CPU-only. | CPU-only works, with the smaller fallback reranker. |
 | Web | FastAPI + Pydantic v2 | Spec requirement; typed contracts and OpenAPI for free. | — |
 | DB access | SQLAlchemy 2.0 + Alembic + psycopg 3 + `pgvector` Python package | Mature migrations; raw SQL possible where needed (vector/FTS queries). | SQLModel (thinner), asyncpg (faster but more complexity). The API is sync-first in Phase 2; async only if profiling shows a need. |
 | Database | PostgreSQL 17 + pgvector ≥ 0.8 (HNSW, cosine) | One store for metadata, vectors, keyword index, jobs and logs; transactional consistency. | Qdrant/Weaviate when you need tens of millions of vectors or built-in sparse vectors. |
@@ -946,36 +1036,37 @@ don't claim a win that the interval doesn't support.
 | File storage | Local volume, content-addressed | Simple; dedup for free. | S3/MinIO behind the same `BlobStore` interface. |
 | PDF | PyMuPDF | Fast, accurate text layer, page rendering for OCR. **Note: AGPL license**, fine for a portfolio, matters for commercial closed-source use. | pypdf (MIT, weaker extraction). |
 | DOCX | python-docx | Spec requirement; paragraphs, headings, tables. | — |
-| OCR | **Tesseract** (`pytesseract`) | Small, CPU-only, simple Docker install (`apt install tesseract-ocr`). | **PaddleOCR**: often more accurate on complex/noisy scans but much heavier; optional extra behind `OCREngine`, compared in Phase 4. |
+| OCR | **Tesseract** (`pytesseract`), language `fra` | Small, CPU-only, simple install (Windows installer with the French pack; `apt install tesseract-ocr tesseract-ocr-fra` in Docker). | **PaddleOCR**: often more accurate on complex/noisy scans but much heavier; optional extra behind `OCREngine`, compared in Phase 4. |
 | Chunking | Recursive structure-aware, 350 tokens, 50 overlap, embedder tokenizer | Middle of the well-supported range; measured in Phase 4. | Semantic, parent-child, contextual headers. |
-| Embedder | `BAAI/bge-small-en-v1.5` (384-d), local | Free, CPU-friendly, strong retrieval quality for its size, no data leaves the machine. | `bge-base`/`bge-large` (better, slower); `intfloat/multilingual-e5-*` or `BAAI/bge-m3` for non-English; an embedding API via the `openai_compat` embedder. |
-| Keyword | Postgres FTS (`english`), `ts_rank_cd` | Already in the DB; enough for RRF. | ParadeDB `pg_search` (real BM25). |
+| Embedder | `BAAI/bge-m3` (1024-d, dense), local on GPU | Strong multilingual/French retrieval, long-input support, cross-lingual ready for the English phase, no data leaves the machine. | `intfloat/multilingual-e5-base` (768-d, lighter); an embedding API via the `openai_compat` embedder. |
+| Language | **French first**; English is a post-v1 optimization | Your documents are French. Every language-sensitive component (embedder, FTS config, OCR pack, sentence splitter, prompt, benchmark) is chosen for French but parameterized per language. | — |
+| Keyword | Postgres FTS, custom `documind_fr` config (`unaccent` + French stemmer), `ts_rank_cd` | Already in the DB; accent- and inflection-tolerant; enough for RRF. | ParadeDB `pg_search` (real BM25); bge-m3 sparse weights. |
 | Fusion | RRF, k = 60, 50 candidates per retriever | Scale-free, no tuning, strong baseline. | Weighted/learned fusion. |
-| Reranker | `BAAI/bge-reranker-base`, top 30 → 6, **off until measured** | Standard open cross-encoder. | `ms-marco-MiniLM-L-6-v2` (faster, weaker); hosted rerank APIs. |
-| LLM | Provider interface: `anthropic` (default model `claude-sonnet-5-5`), `openai_compat` (covers OpenAI, Ollama, vLLM, LM Studio), `fake` | Strong instruction following and structured output for grounded citation; `openai_compat` lets you run fully local with Ollama at zero cost. | Any provider via the interface. Model IDs and prices are config, never hard-coded. |
+| Reranker | `BAAI/bge-reranker-v2-m3` (GPU), top 30 → 6, **off until measured** | Multilingual cross-encoder, good on French. | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` (CPU fallback, faster, weaker). |
+| LLM | **Groq** via the `openai_compat` provider; generator `openai/gpt-oss-120b`; `fake` for tests | Your choice. Very fast inference, and gpt-oss supports strict `json_schema` output on Groq. One class also covers OpenAI, Ollama and vLLM later. | `llama-3.3-70b-versatile` (JSON-object mode only). Model IDs and prices are config, never hard-coded. |
 | Generation params | temperature 0, max output 800 tokens, context budget 3,000 tokens / 6 chunks | Determinism helps evaluation; short grounded answers. | — |
-| Eval | RAGAS (faithfulness, answer correctness) + custom metrics; judge model configurable | Spec requirement; custom metrics cover citation and abstention, which RAGAS doesn't measure the way we need. | — |
+| Eval | RAGAS (faithfulness, answer correctness) + custom metrics; judge `llama-3.3-70b-versatile` on Groq, rate-limited and cached | Spec requirement; custom metrics cover citation and abstention, which RAGAS doesn't measure the way we need. | — |
 | Auth | Per-user API keys (hashed), bearer header | Real access control with minimal machinery; the frontend uses a dev key. | OAuth/OIDC + JWT in Phase 6 if desired. |
 | Frontend | Vite + React + TS, TanStack Query, plain CSS modules | Spec requirement; minimal dependencies. | — |
 | Logging | structlog JSON with redaction | Machine-parseable, safe by default. | — |
 
 ---
 
-## 13. Questions for your review
+## 13. Review decisions
 
-Only questions whose answer changes the architecture. Everything else uses the defaults above.
+These were the open questions in rev. 1. Your answers, and what each one changed:
 
-1. **What language(s) will your documents be in?** This is the one that matters most. The default is
-   **English-only** (`bge-small-en-v1.5`, FTS `english` stemming). If you'll also use **French** (or other)
-   documents, I'd switch to `intfloat/multilingual-e5-base` (768-d) or `BAAI/bge-m3` (1024-d, heavier), store
-   a per-chunk FTS language config, and use `simple`/per-language stemming. That changes the schema
-   (`vector(dim)`, `tsv` definition) and the benchmark, so it's best decided now.
-2. **Which LLM do you want to start with?** Default: Anthropic API (needs an API key; small per-query cost).
-   Alternative: **Ollama** locally (free, private; needs a reasonably strong machine; quality and JSON
-   reliability are lower with small models). Both will be supported; this only picks what Phase 2 tests
-   against first.
-3. **Do you have an NVIDIA GPU you want to use?** Default assumes **CPU only**. A GPU makes reranking and
-   larger embedders cheap and changes which defaults are worth it, but not the architecture.
+| Question | Decision | What changed |
+|---|---|---|
+| Document language | **French now**; English is an optimization after v1 succeeds | Embedder → `bge-m3` (1024-d); reranker → `bge-reranker-v2-m3`; FTS → `documind_fr` (unaccent + French stemmer) with a **per-chunk** `fts_config` so English can be added without re-indexing French; Tesseract `fra`; French sentence splitter; French system prompt; French benchmark. |
+| LLM provider | **Groq** (API key) | Single `openai_compat` provider; generator `openai/gpt-oss-120b` (strict JSON schema); judge `llama-3.3-70b-versatile`; client-side rate limiting and response caching for eval runs. |
+| GPU | **NVIDIA GTX 1660 Super, 6 GB** | Embedder and reranker run on the GPU in fp16 (both fit); `api`/`worker` run natively on Windows in Phases 2–4 for easy GPU access; GPU-in-Docker is an optional Phase 5 profile; tests remain CPU-only. |
+
+**Things you'll need before Phase 2** (no action yet; Phase 2 gives exact commands):
+- **Docker Desktop running.** It's installed, but the engine wasn't running when I checked.
+- **uv** (`pip install uv`, or `winget install astral-sh.uv`).
+- A **Groq API key** in `backend/.env` as `GROQ_API_KEY=…`. Never paste it in chat or commit it.
+- For Phase 3 only: Tesseract for Windows with the French language pack.
 
 ---
 
@@ -985,21 +1076,24 @@ Each phase ends with: explanation of key decisions, complete files, run commands
 tests. Each phase is a separate reviewable change.
 
 ### Phase 1: Architecture *(this document)*
-- **Done when:** you have reviewed this doc and answered §13 (or accepted the defaults).
+- **Done:** reviewed; §13 decisions applied in rev. 2.
 
 ### Phase 2: Minimal end-to-end pipeline
 Scope: project skeleton (uv, ruff, mypy, pytest), config, Docker Compose `db`, Alembic migration for the §8
-schema, TXT + PDF (text layer) extraction, cleaning, recursive chunker, local embedder + fake embedder,
-Postgres job queue + worker, **dense** retrieval, context builder, LLM provider (real + fake), basic
-structured answer with `[S#]` citations, API endpoints for upload/list/get/delete/job/query, API-key auth.
+schema (including `unaccent` and `documind_fr`), TXT + PDF (text layer) extraction, cleaning, French-aware
+recursive chunker, bge-m3 embedder (GPU/CPU) + fake embedder, Postgres job queue + worker, **dense**
+retrieval, context builder, `openai_compat` LLM provider configured for Groq + scripted fake, basic structured
+answer in French with `[S#]` citations, API endpoints for upload/list/get/delete/job/query, API-key auth.
 - **Acceptance:**
   - `docker compose up -d db` then `uv run alembic upgrade head` creates the schema.
+  - `uv run python -c "import torch; print(torch.cuda.is_available())"` prints `True`, and the worker logs
+    `device=cuda` for the embedder.
   - `uv run pytest` is green with **no network access** (fakes only), covering: chunker offsets/page ranges
     and token bounds; dedup returns 409; validation rejects a renamed `.png`→`.pdf` and an oversize file;
     job retry and idempotent re-run (no duplicate chunks); owner isolation (user B gets 404 on user A's doc
     and never retrieves A's chunks); delete removes the doc from retrieval immediately.
-  - Manual demo: upload a sample PDF, poll the job to `ready`, ask a question, and receive an answer whose
-    citations carry the correct `document_id` and page number.
+  - Manual demo: upload a sample **French** PDF, poll the job to `ready`, ask a question in French, and
+    receive a French answer (from Groq) whose citations carry the correct `document_id` and page number.
 
 ### Phase 3: Hybrid retrieval, reranking, citations, OCR, abstention
 Scope: DOCX extractor, per-page OCR (Tesseract; PaddleOCR optional), keyword retriever, RRF fusion, hybrid
@@ -1008,7 +1102,8 @@ filters, `debug` diagnostics, `query_logs` / `query_retrievals`.
 - **Acceptance:**
   - Unit tests: RRF on hand-computed examples; citation validator rejects fabricated IDs and non-matching
     quotes and accepts OCR-noisy near-matches; abstention gates trigger correctly with scripted LLM output.
-  - Integration: an exact-identifier query (e.g. `XK-4471`) that dense-only misses is found by hybrid; a
+  - Integration: a query typed without accents (`resiliation`) matches `résiliation` via keyword search;
+    an exact-identifier query (e.g. `XK-4471` or an article number) that dense-only misses is found by hybrid; a
     scanned-PDF fixture becomes `ready` with `ocr_page_count > 0` and is answerable; an unanswerable question
     returns `abstained: true` with a reason; a document containing a prompt-injection string doesn't change
     system behavior (scripted check + manual check with the real LLM).
@@ -1047,6 +1142,14 @@ image build), README with architecture diagram, results summary and screenshots,
   - Malformed-file corpus is handled without worker crash or hang.
   - Killing the worker mid-job leads to the job being reclaimed and completed.
   - README results table matches `eval/results/` exactly (no hand-edited numbers).
+
+### Phase 7 (after v1): English support
+Scope: add a `documind_en` FTS config (chunks get their config from the detected document language), query
+language detection (search both configs when unsure), Tesseract `fra+eng`, an English prompt, and an English
+plus cross-lingual (FR question → EN document, and the reverse) benchmark slice. bge-m3 is already
+multilingual, so **no re-embedding** is needed.
+- **Acceptance:** French benchmark metrics don't regress (within CI); English and cross-lingual slices are
+  reported separately.
 
 ---
 
