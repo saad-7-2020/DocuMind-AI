@@ -41,8 +41,20 @@ class Worker:
 
     def run_forever(self, stop: threading.Event) -> None:
         log.info("worker_started", worker_id=self.worker_id)
+        failures = 0
         while not stop.is_set():
-            if not self.run_once():
+            try:
+                worked = self.run_once()
+                failures = 0
+            except Exception as e:
+                # Infrastructure errors (e.g. the database restarting) must not kill the worker.
+                # Job-level failures are already handled in _process; this is for claim/bookkeeping.
+                failures += 1
+                delay = min(60.0, self.poll_interval_s * 2 ** min(failures, 6))
+                log.warning("worker_loop_error", error_type=type(e).__name__, retry_in_s=delay)
+                stop.wait(delay)
+                continue
+            if not worked:
                 stop.wait(self.poll_interval_s)
         log.info("worker_stopped", worker_id=self.worker_id)
 
