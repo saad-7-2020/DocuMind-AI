@@ -34,3 +34,6 @@ Thumbs.db
 
 # old project-local uv cache (now on A:, see [tool.uv] in backend/pyproject.toml)
 .uv-cache/
+
+# Machine-specific dev-server launcher (portable Node path)
+.claude/launch.json

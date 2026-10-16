@@ -9,3 +9,5 @@ reproducible evaluation framework.
 
 - Architecture, data model, API contracts and phase plan: [docs/architecture.md](docs/architecture.md)
 - Phase 2 guide (decisions, run commands, acceptance): [docs/phase-2.md](docs/phase-2.md)
+- Frontend (React + TypeScript): `frontend/`, run with `npm --prefix frontend run dev`
+- **How to test the app:** [docs/testing.md](docs/testing.md)
