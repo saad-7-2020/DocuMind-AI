@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: documind
+      POSTGRES_DB: documind
+    ports:
+      # 5433 on the host: this machine already runs a local Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U documind -d documind"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

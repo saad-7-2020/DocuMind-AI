@@ -238,8 +238,12 @@ answer quality aren't tuned yet.
   input, so counting with any other tokenizer risks embedding only part of a chunk. It also matters for
   French: a multilingual tokenizer (XLM-RoBERTa, used by bge-m3) splits French text into more tokens per word
   than an English tokenizer would, so "350 tokens" is less French text than you might expect.
-- **Sentence splitting is French-aware** (`pysbd` with `language="fr"`), so abbreviations such as "M.",
-  "art.", "p. ex." or "cf." don't end a sentence.
+- **Sentence splitting is French-aware**, so abbreviations such as "M.", "art.", "p. ex." or "cf." don't end
+  a sentence. *(Changed in Phase 2: a small regex splitter with a French abbreviation list replaces `pysbd`.
+  It returns exact character spans, which the offset-based citations need, and its behavior is pinned by
+  unit tests.)*
+- **Overlap is sentence-level:** the next chunk starts a few whole sentences back. If the last sentence is
+  bigger than the overlap budget, two chunks don't overlap, because overlap never cuts a sentence.
 - Every chunk keeps `page_start`, `page_end`, `char_start`, `char_end` (offsets into the concatenated
   document text) and the nearest heading (`section_path`). Chunks may cross a page boundary; the citation then
   shows a page range ("pp. 4–5").
@@ -715,9 +719,10 @@ CREATE INDEX chunks_tsv_gin        ON chunks USING gin (tsv);
 CREATE INDEX chunks_owner_doc      ON chunks (owner_id, document_id);
 
 -- ── Background jobs (durable queue) ──────────────────────────────
-CREATE TABLE jobs (
-    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id   uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+CREATE TABLE jobs (                              -- Phase 2: owner_id added; document_id nullable,
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),   -- so a finished delete job stays pollable
+    owner_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id   uuid REFERENCES documents(id) ON DELETE SET NULL,
     kind          text NOT NULL CHECK (kind IN ('ingest','reindex','delete')),
     status        text NOT NULL DEFAULT 'queued'
                     CHECK (status IN ('queued','running','succeeded','failed')),

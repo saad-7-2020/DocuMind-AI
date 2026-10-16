@@ -31,3 +31,6 @@ storage/
 .idea/
 .DS_Store
 Thumbs.db
+
+# old project-local uv cache (now on A:, see [tool.uv] in backend/pyproject.toml)
+.uv-cache/

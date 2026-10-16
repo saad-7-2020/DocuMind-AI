@@ -5,6 +5,7 @@ scanned PDFs), ask questions in natural language, and get answers grounded in yo
 citations, or an explicit "insufficient evidence" response. Built as a learning and portfolio project, with a
 reproducible evaluation framework.
 
-**Status:** Phase 1 (architecture) reviewed; French-first, Groq LLM, local GPU for embeddings. Phase 2 next.
+**Status:** Phase 2 (minimal end-to-end pipeline) done: upload PDF/TXT → index with bge-m3 on GPU → dense retrieval → French answers from Groq with page-level citations. 60 tests pass. Next: Phase 3 (hybrid search, reranking, OCR, abstention).
 
 - Architecture, data model, API contracts and phase plan: [docs/architecture.md](docs/architecture.md)
+- Phase 2 guide (decisions, run commands, acceptance): [docs/phase-2.md](docs/phase-2.md)
