@@ -5,12 +5,14 @@ Run with:  uv run documind api   (or: uv run uvicorn --factory documind.api.app:
 
 from __future__ import annotations
 
+import threading
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from documind.api.errors import install_error_handlers
 from documind.api.routers import documents, health, jobs, query
@@ -22,7 +24,20 @@ from documind.observability.logging import configure_logging
 def create_app(container: Container) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        # Single-service deployments (e.g. Render's free tier has no background workers) run the
+        # ingestion worker as a thread of this process. If the host stops the process mid-job,
+        # the job's lock goes stale and is reclaimed on the next start.
+        stop = threading.Event()
+        worker_thread: threading.Thread | None = None
+        if container.settings.run_worker_in_api:
+            worker_thread = threading.Thread(
+                target=container.worker.run_forever, args=(stop,), name="documind-worker", daemon=True
+            )
+            worker_thread.start()
         yield
+        stop.set()
+        if worker_thread is not None:
+            worker_thread.join(timeout=10)
         container.close()
 
     app = FastAPI(
@@ -48,6 +63,18 @@ def create_app(container: Container) -> FastAPI:
     install_error_handlers(app)
     for r in (health.router, documents.router, jobs.router, query.router):
         app.include_router(r)
+
+    # Added last so it is the outermost middleware: CORS headers also reach error responses.
+    # Authentication uses a bearer header, not cookies, so credentials are not allowed cross-origin.
+    if container.settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=container.settings.cors_origins,
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+            expose_headers=["X-Request-ID"],
+            max_age=600,
+        )
     return app
 
 

@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import structlog
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from documind.db.session import transaction
 from documind.domain.models import RetrievedChunk, SearchFilters
 from documind.embedding.base import Embedder
+
+log = structlog.get_logger(__name__)
 
 # Filters live *inside* the SQL, so another user's chunk can never enter the candidate list.
 # Only fixed fragments are concatenated; every value is a bound parameter.
@@ -47,7 +51,13 @@ class DenseRetriever:
             # filter it could return fewer than k rows. Iterative scans (pgvector >= 0.8) keep
             # scanning until k rows pass the filter. relaxed_order may return rows slightly
             # out of order, so we re-sort below.
-            s.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+            # Needs pgvector >= 0.8. On an older server the SET fails: a savepoint keeps that from
+            # aborting the whole transaction, and the search simply runs without iterative scans.
+            try:
+                with s.begin_nested():
+                    s.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+            except DBAPIError:
+                log.warning("hnsw_iterative_scan_unavailable")
             rows = s.execute(stmt, params).all()
 
         chunks = [

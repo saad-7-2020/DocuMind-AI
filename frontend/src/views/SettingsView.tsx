@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, describeError, getApiKey, setApiKey, type Health } from "../api";
+import { API_BASE, api, describeError, getApiKey, setApiKey, type Health } from "../api";
 import type { Theme } from "../App";
 import { IconKey, IconMoon, IconSun } from "../components/Icons";
 import { useToast } from "../components/Toasts";
@@ -70,7 +70,8 @@ export function SettingsView({
           <h2>État du système</h2>
           <p>Vérifié automatiquement toutes les 15 secondes.</p>
           <dl className="kv">
-            <dt>API</dt>
+            <dt>Adresse de l'API</dt><dd className="mono">{API_BASE || "même origine (proxy de développement)"}</dd>
+            <dt>État de l'API</dt>
             <dd><span className={`status-dot ${health?.status === "ok" ? "up" : "down"}`} />{health?.status === "ok" ? "Opérationnelle" : "Injoignable"}</dd>
             <dt>Base de données</dt><dd>{health?.database ?? "–"}</dd>
             <dt>Modèle d'embedding</dt><dd className="mono">{health?.embedder ?? "–"}</dd>

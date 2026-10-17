@@ -20,7 +20,7 @@ from documind.generation.llm.base import LLMProvider
 from documind.indexing.service import IndexingService
 from documind.ingestion.extractors import PdfExtractor, TxtExtractor
 from documind.ingestion.jobs import JobQueue
-from documind.ingestion.storage import LocalBlobStore
+from documind.ingestion.storage import BlobStore, LocalBlobStore, SupabaseBlobStore
 from documind.rag.query_pipeline import QueryPipeline
 from documind.retrieval.dense import DenseRetriever
 from documind.worker.runner import Worker
@@ -31,7 +31,7 @@ class Container:
     settings: Settings
     engine: Engine
     sf: sessionmaker[Session]
-    blobs: LocalBlobStore
+    blobs: BlobStore
     embedder: Embedder
     llm: LLMProvider
     queue: JobQueue
@@ -48,6 +48,22 @@ def build_embedder(settings: Settings) -> Embedder:
         from documind.embedding.fake import HashEmbedder
 
         return HashEmbedder(settings.embedding_dim)
+    if settings.embedder == "openai_compat":
+        from documind.embedding.openai_compat import OpenAICompatEmbedder
+
+        return OpenAICompatEmbedder(
+            base_url=settings.embedding_base_url,
+            api_key=settings.embedding_api_key.get_secret_value(),
+            model=settings.embedding_model,
+            dim=settings.embedding_dim,
+            batch_size=settings.embed_batch_size,
+            query_extra=settings.embedding_query_extra,
+            document_extra=settings.embedding_document_extra,
+            send_dimensions=settings.embedding_send_dimensions,
+            timeout_s=settings.embedding_timeout_s,
+            max_retries=settings.embedding_max_retries,
+            chars_per_token=settings.embedding_chars_per_token,
+        )
     from documind.embedding.sentence_transformers import SentenceTransformerEmbedder
 
     return SentenceTransformerEmbedder(
@@ -76,12 +92,22 @@ def build_llm(settings: Settings) -> LLMProvider:
     )
 
 
+def build_blob_store(settings: Settings) -> BlobStore:
+    if settings.storage_backend == "supabase":
+        if not settings.supabase_url or not settings.supabase_service_key.get_secret_value():
+            raise ValueError("STORAGE_BACKEND=supabase needs SUPABASE_URL and SUPABASE_SERVICE_KEY")
+        return SupabaseBlobStore(
+            settings.supabase_url, settings.supabase_service_key.get_secret_value(), settings.supabase_bucket
+        )
+    return LocalBlobStore(settings.storage_dir)
+
+
 def build_container(
     settings: Settings, *, embedder: Embedder | None = None, llm: LLMProvider | None = None
 ) -> Container:
     engine = make_engine(settings.database_url)
     sf = make_session_factory(engine)
-    blobs = LocalBlobStore(settings.storage_dir)
+    blobs = build_blob_store(settings)
     embedder = embedder or build_embedder(settings)
     llm = llm or build_llm(settings)
     queue = JobQueue(sf)

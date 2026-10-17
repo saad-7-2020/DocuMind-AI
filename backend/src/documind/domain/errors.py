@@ -70,6 +70,21 @@ class Conflict(DocuMindError):
     code, status, title = "conflict", 409, "Conflict"
 
 
+# ── External services: embeddings and object storage ────
+class EmbeddingError(DocuMindError):
+    code, status, title = "embedding_error", 502, "Embedding provider error"
+
+
+class EmbeddingUnavailable(EmbeddingError):
+    code, status, title = "embedding_unavailable", 503, "Embedding provider unavailable"
+    retryable = True
+
+
+class StorageError(DocuMindError):
+    code, status, title = "storage_error", 502, "File storage error"
+    retryable = True
+
+
 # ── LLM ──────────────────────────────────────────────────
 class LLMError(DocuMindError):
     code, status, title = "llm_error", 502, "LLM provider error"

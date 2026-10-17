@@ -78,7 +78,7 @@ def upload_document(
                 )
                 if existing is not None:
                     raise DuplicateDocument(existing_document_id=str(existing))
-                key = container.blobs.put(spooled.sha256, spooled.path)
+                key = container.blobs.put(spooled.sha256, spooled.path, spooled.mime_type)
                 doc = Document(
                     id=uuid.uuid4(), owner_id=user.id, filename=_display_name(file.filename),
                     mime_type=spooled.mime_type, size_bytes=spooled.size_bytes, sha256=spooled.sha256,

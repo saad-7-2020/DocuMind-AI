@@ -1,0 +1,55 @@
+# Render Blueprint: one web service running the API + the ingestion worker thread.
+# Render dashboard -> New -> Blueprint -> pick this repository. Values marked `sync: false`
+# are secrets: Render asks you for them in the dashboard (they are never stored in git).
+# Full walkthrough: docs/deployment.md
+services:
+  - type: web
+    name: documind-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free                  # free: sleeps after 15 min idle (~1 min to wake). Change to `starter` to stay on.
+    region: frankfurt           # use the region closest to your Supabase project
+    healthCheckPath: /health/live
+    envVars:
+      # --- Database (Supabase) ---
+      - key: DATABASE_URL       # Supabase "Session pooler" string, with the postgresql+psycopg:// prefix
+        sync: false
+      # --- File storage (Supabase Storage, private bucket) ---
+      - key: STORAGE_BACKEND
+        value: supabase
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: documents
+      - key: STORAGE_DIR        # upload spool only (ephemeral disk is fine for that)
+        value: /tmp/documind
+      - key: MAX_UPLOAD_BYTES
+        value: "20971520"       # 20 MB: keeps memory use predictable on a 512 MB instance
+      # --- Embeddings (hosted; example: Jina) ---
+      - key: EMBEDDER
+        value: openai_compat
+      - key: EMBEDDING_BASE_URL
+        value: https://api.jina.ai/v1
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: EMBEDDING_MODEL
+        value: jina-embeddings-v3
+      - key: EMBEDDING_DIM
+        value: "1024"
+      - key: EMBEDDING_QUERY_EXTRA
+        value: '{"task": "retrieval.query"}'
+      - key: EMBEDDING_DOCUMENT_EXTRA
+        value: '{"task": "retrieval.passage"}'
+      # --- LLM (Groq) ---
+      - key: GROQ_API_KEY
+        sync: false
+      # --- Runtime ---
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: CORS_ORIGINS       # your Vercel URL, e.g. https://documind.vercel.app (set after the first Vercel deploy)
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO

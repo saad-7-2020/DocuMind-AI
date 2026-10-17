@@ -98,6 +98,13 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Where the API lives. Empty in development (the Vite dev server proxies /v1 to FastAPI, so the
+ * browser sees one origin). In production (Vercel) set VITE_API_URL at build time, e.g.
+ * https://documind-api.onrender.com, and the API must allow this site's origin (CORS_ORIGINS).
+ */
+export const API_BASE: string = ((import.meta.env.VITE_API_URL as string | undefined) ?? "").replace(/\/+$/, "");
+
 const KEY_STORAGE = "documind.apiKey";
 
 export function getApiKey(): string {
@@ -133,7 +140,7 @@ async function request<T>(path: string, init: RequestInit = {}, key = getApiKey(
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   let res: Response;
   try {
-    res = await fetch(path, { ...init, headers });
+    res = await fetch(API_BASE + path, { ...init, headers });
   } catch {
     throw new ApiError(0, "network_error", "Impossible de joindre l'API. Est-elle démarrée ?");
   }
@@ -175,7 +182,7 @@ export const api = {
   ): Promise<{ document_id: string; job_id: string; status: string }> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/v1/documents");
+      xhr.open("POST", `${API_BASE}/v1/documents`);
       const key = getApiKey();
       if (key) xhr.setRequestHeader("Authorization", `Bearer ${key}`);
       xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);

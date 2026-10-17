@@ -54,7 +54,8 @@ class IndexingService:
             mime, storage_key = doc.mime_type, doc.storage_key
 
         self.queue.set_stage(job.id, "extracting", 0.05)
-        pages = extractor_for(mime, self.extractors).extract(self.blobs.path(storage_key))
+        with self.blobs.open_local(storage_key) as local_file:
+            pages = extractor_for(mime, self.extractors).extract(local_file)
 
         self.queue.set_stage(job.id, "cleaning", 0.15)
         pages = clean_pages(pages)
