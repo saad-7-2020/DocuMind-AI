@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Database
-    database_url: str = "postgresql+psycopg://documind:documind@localhost:5433/documind"
+    database_url: str = "postgresql+psycopg://documind:documind@127.0.0.1:5433/documind"
 
     # Storage and upload limits
     storage_dir: Path = Path("./data/blobs")

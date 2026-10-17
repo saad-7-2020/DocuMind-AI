@@ -18,7 +18,7 @@ from documind.config import Settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_DB_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+psycopg://documind:documind@localhost:5433/documind_test"
+    "TEST_DATABASE_URL", "postgresql+psycopg://documind:documind@127.0.0.1:5433/documind_test"
 )
 
 CONTRACT_PAGES = [

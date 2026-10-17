@@ -17,12 +17,28 @@ depends_on = None
 
 UPGRADE = r"""
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS unaccent;
 
--- French full-text search: strip accents, then apply the French Snowball stemmer.
+-- French full-text search: strip accents (unaccent), then apply the French Snowball stemmer.
+-- `unaccent` ships with standard PostgreSQL (and the Docker image). Some minimal builds lack it;
+-- there the configuration keeps French stemming and stop words but is not accent-insensitive.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'unaccent') THEN
+        CREATE EXTENSION IF NOT EXISTS unaccent;
+    ELSE
+        RAISE NOTICE 'unaccent extension not available: documind_fr will not fold accents';
+    END IF;
+END $$;
+
 CREATE TEXT SEARCH CONFIGURATION documind_fr (COPY = french);
-ALTER TEXT SEARCH CONFIGURATION documind_fr
-    ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'unaccent') THEN
+        ALTER TEXT SEARCH CONFIGURATION documind_fr
+            ALTER MAPPING FOR hword, hword_part, word WITH unaccent, french_stem;
+    END IF;
+END $$;
 
 CREATE TABLE users (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

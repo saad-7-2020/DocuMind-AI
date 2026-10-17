@@ -26,11 +26,29 @@ Install the frontend dependencies once:
 npm --prefix frontend install
 ```
 
-Start the database (Docker Desktop must show "Engine running"):
+Start the database. **Option 1: Docker** (Docker Desktop must show "Engine running"):
 
 ```bash
 docker compose up -d db
 ```
+
+**Option 2: without Docker** (Windows). Runs Postgres 16 + pgvector from a Python wheel, on the same port and with the same credentials, so nothing else changes. One-time install of the isolated environment:
+
+```bash
+py -m uv venv A:\documind\pgenv --python 3.13
+```
+
+```bash
+py -m uv pip install --python A:\documind\pgenv\Scripts\python.exe pixeltable-pgserver==0.5.1
+```
+
+Then start it (creates the data folder and both databases on first run; use `stop` / `status` the same way):
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts\dev-db.ps1 start
+```
+
+> Why version 0.5.1 exactly: pgvector is compiled for the builder's CPU. Newer builds (0.6.0) use AVX-512 instructions, and on CPUs without them (e.g. Ryzen 5 5500) the server **crashes** with "illegal instruction" the moment a 1024-dimension vector is inserted. 0.5.1 was tested on that CPU. This build has no `unaccent` extension, so keyword search in Phase 3 won't ignore accents unless you use the Docker image.
 
 Create the schema (needed once, and again after future migrations):
 
@@ -57,7 +75,7 @@ npm --prefix frontend run build
 You need **three terminals**, all in `C:\My_projects\IA\RAG\backend`, each starting with these lines:
 
 ```bash
-$env:DATABASE_URL = "postgresql+psycopg://documind:documind@localhost:5433/documind_test"
+$env:DATABASE_URL = "postgresql+psycopg://documind:documind@127.0.0.1:5433/documind_test"
 ```
 
 ```bash

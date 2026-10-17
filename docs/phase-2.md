@@ -76,6 +76,9 @@ question ─► embed query ─► pgvector HNSW search (owner-scoped) ─► to
   paraphrased "quote". *(Phase 3.)*
 - Image-only PDF pages produce no text; a fully scanned PDF fails with `no_text_found`. *(Phase 3: OCR.)*
 - DOCX uploads are rejected with 415. *(Phase 3.)*
+- Citation page ranges can be wide on short documents: a chunk is ~350 tokens, so one chunk may span
+  several short pages (e.g. "pp. 1–3"). *(Phase 3: verify the quote and narrow the range to the page that
+  actually contains it.)*
 - `cost_usd` is `null`: no prices are configured, and we don't estimate. Token usage is real.
 - The job timeout is enforced by reclaiming stale jobs, not by killing a running one.
 
