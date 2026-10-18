@@ -27,6 +27,9 @@ def redact(_logger: object, _method: str, event_dict: dict) -> dict:
 
 def configure_logging(level: str = "INFO") -> None:
     logging.basicConfig(format="%(message)s", stream=sys.stdout, level=level.upper())
+    # HTTP client libraries log every request URL at INFO: noise, and storage URLs carry object keys.
+    for noisy in ("httpx", "httpcore", "huggingface_hub", "urllib3", "sentence_transformers"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

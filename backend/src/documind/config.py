@@ -6,12 +6,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True
+    )
 
     # Database
     database_url: str = "postgresql+psycopg://documind:documind@127.0.0.1:5433/documind"
@@ -22,7 +24,11 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 50 * 1024 * 1024
     max_pages: int = 1000
     supabase_url: str = ""  # https://<project-ref>.supabase.co
-    supabase_service_key: SecretStr = SecretStr("")  # server-side only: bypasses Storage policies
+    # Server-side secret: bypasses Storage access rules, never goes to the browser. The dashboard calls
+    # it SUPABASE_SECRET_KEY (new `sb_secret_…` keys); the older name SUPABASE_SERVICE_KEY still works.
+    supabase_secret_key: SecretStr = Field(
+        default=SecretStr(""), validation_alias=AliasChoices("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_KEY")
+    )
     supabase_bucket: str = "documents"  # must be a PRIVATE bucket
 
     # Embedding

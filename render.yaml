@@ -20,7 +20,7 @@ services:
         value: supabase
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: SUPABASE_SECRET_KEY  # the `sb_secret_…` key from the Connect panel (Server tab)
         sync: false
       - key: SUPABASE_BUCKET
         value: documents

@@ -94,10 +94,10 @@ def build_llm(settings: Settings) -> LLMProvider:
 
 def build_blob_store(settings: Settings) -> BlobStore:
     if settings.storage_backend == "supabase":
-        if not settings.supabase_url or not settings.supabase_service_key.get_secret_value():
-            raise ValueError("STORAGE_BACKEND=supabase needs SUPABASE_URL and SUPABASE_SERVICE_KEY")
+        if not settings.supabase_url or not settings.supabase_secret_key.get_secret_value():
+            raise ValueError("STORAGE_BACKEND=supabase needs SUPABASE_URL and SUPABASE_SECRET_KEY")
         return SupabaseBlobStore(
-            settings.supabase_url, settings.supabase_service_key.get_secret_value(), settings.supabase_bucket
+            settings.supabase_url, settings.supabase_secret_key.get_secret_value(), settings.supabase_bucket
         )
     return LocalBlobStore(settings.storage_dir)
 

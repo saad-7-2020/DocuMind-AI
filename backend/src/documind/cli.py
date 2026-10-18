@@ -3,6 +3,7 @@
   create-user EMAIL   create a user and print a new API key (shown once)
   worker              run the ingestion worker until Ctrl+C
   api                 run the HTTP API (uvicorn)
+  doctor              check that the database, storage, embeddings and LLM settings work
 """
 
 from __future__ import annotations
@@ -42,6 +43,26 @@ def _worker() -> None:
         container.close()
 
 
+def _doctor(skip_embeddings: bool, skip_llm: bool) -> int:
+    from documind.container import build_container
+    from documind.doctor import run_doctor
+
+    settings = get_settings()
+    container = build_container(settings)
+    try:
+        checks = run_doctor(container, settings, skip_embeddings=skip_embeddings, skip_llm=skip_llm)
+    finally:
+        container.close()
+    for c in checks:
+        print(f"[{' OK' if c.ok else 'FAIL'}] {c.name:<11} {c.detail}")
+        if c.hint and not c.ok:
+            print(f"       -> {c.hint}")
+    failed = [c.name for c in checks if not c.ok]
+    print()
+    print("All checks passed." if not failed else f"{len(failed)} check(s) failed: {', '.join(failed)}")
+    return 1 if failed else 0
+
+
 def _api(host: str, port: int, reload: bool) -> None:
     import uvicorn
 
@@ -58,6 +79,9 @@ def main() -> None:
     p_api.add_argument("--host", default="127.0.0.1")
     p_api.add_argument("--port", type=int, default=8000)
     p_api.add_argument("--reload", action="store_true")
+    p_doc = sub.add_parser("doctor", help="check database, storage, embeddings and LLM settings")
+    p_doc.add_argument("--skip-embeddings", action="store_true", help="don't call the embedding model/API")
+    p_doc.add_argument("--skip-llm", action="store_true", help="don't call the LLM (saves a few tokens)")
     args = parser.parse_args()
 
     configure_logging(get_settings().log_level)
@@ -67,6 +91,8 @@ def main() -> None:
         _worker()
     elif args.command == "api":
         _api(args.host, args.port, args.reload)
+    elif args.command == "doctor":
+        raise SystemExit(_doctor(args.skip_embeddings, args.skip_llm))
 
 
 if __name__ == "__main__":

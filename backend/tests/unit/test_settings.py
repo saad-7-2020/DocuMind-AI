@@ -25,7 +25,7 @@ def test_embedding_extra_fields_are_read_as_json(monkeypatch: pytest.MonkeyPatch
 
 
 def test_secrets_are_not_shown_in_repr(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("SUPABASE_SERVICE_KEY", "very-secret-service-key")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "very-secret-service-key")
     monkeypatch.setenv("EMBEDDING_API_KEY", "very-secret-embedding-key")
     monkeypatch.setenv("GROQ_API_KEY", "very-secret-groq-key")
     text = repr(settings())

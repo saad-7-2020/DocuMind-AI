@@ -24,8 +24,11 @@ from typing import Protocol
 from urllib.parse import quote
 
 import httpx
+import structlog
 
 from documind.domain.errors import StorageError
+
+log = structlog.get_logger(__name__)
 
 _KEY_RE = re.compile(r"^[0-9a-f]{2}/[0-9a-f]{64}$")
 
@@ -93,9 +96,17 @@ class SupabaseBlobStore:
         self.bucket = bucket
         self.max_retries = max_retries
         self._sleep = sleep
+        self._key = service_key
+        # Supabase's new keys (sb_secret_…) are not JWTs and belong in the `apikey` header only. The
+        # legacy service_role key is a JWT that Storage reads from `Authorization: Bearer` as well.
+        # If apikey-only is refused (401/403), we switch to sending both once, and remember it.
+        self._bearer = not service_key.startswith("sb_secret_")
+        headers = {"apikey": service_key}
+        if self._bearer:
+            headers["Authorization"] = f"Bearer {service_key}"
         self._client = httpx.Client(
             base_url=f"{url.rstrip('/')}/storage/v1",
-            headers={"apikey": service_key, "Authorization": f"Bearer {service_key}"},
+            headers=headers,
             timeout=httpx.Timeout(timeout_s, connect=10.0),
             transport=transport,
         )
@@ -113,6 +124,8 @@ class SupabaseBlobStore:
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = make_request()
+                if response.status_code in (401, 403) and self._enable_bearer():
+                    response = make_request()
                 if response.status_code < 500 and response.status_code != 429:
                     return response
                 last = f"{action}: storage returned HTTP {response.status_code}"
@@ -123,6 +136,15 @@ class SupabaseBlobStore:
             if attempt < self.max_retries:
                 self._sleep(1.0 * 2 ** (attempt - 1) * (0.5 + random.random()))
         raise StorageError(last)
+
+    def _enable_bearer(self) -> bool:
+        """Once, after an apikey-only request was refused: also send the key as a bearer token."""
+        if self._bearer:
+            return False
+        self._bearer = True
+        self._client.headers["Authorization"] = f"Bearer {self._key}"
+        log.info("storage_auth_fallback", mode="apikey+bearer")
+        return True
 
     def put(self, sha256: str, source: Path, content_type: str = "application/octet-stream") -> str:
         key = blob_key(sha256)

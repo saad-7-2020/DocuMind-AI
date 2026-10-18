@@ -15,15 +15,19 @@ SHA = hashlib.sha256(b"contenu du fichier").hexdigest()
 class FakeSupabase:
     """In-memory stand-in for the Supabase Storage REST API (private bucket 'documents')."""
 
-    def __init__(self, fail_first: int = 0, fail_status: int = 503) -> None:
+    def __init__(self, fail_first: int = 0, fail_status: int = 503, valid_key: str = SERVICE_KEY,
+                 require_bearer: bool = False) -> None:
         self.objects: dict[str, bytes] = {}
         self.requests: list[httpx.Request] = []
         self.fail_first, self.fail_status = fail_first, fail_status
+        self.valid_key, self.require_bearer = valid_key, require_bearer
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
-        assert request.headers["authorization"] == f"Bearer {SERVICE_KEY}"
-        assert request.headers["apikey"] == SERVICE_KEY
+        if request.headers.get("apikey") != self.valid_key:
+            return httpx.Response(401, json={"error": "Unauthorized"})
+        if self.require_bearer and request.headers.get("authorization") != f"Bearer {self.valid_key}":
+            return httpx.Response(401, json={"error": "Unauthorized"})
         if self.fail_first > 0:
             self.fail_first -= 1
             return httpx.Response(self.fail_status)
@@ -43,9 +47,9 @@ class FakeSupabase:
         return httpx.Response(400)
 
 
-def make(fake: FakeSupabase, **kw) -> SupabaseBlobStore:
+def make(fake: FakeSupabase, key: str = SERVICE_KEY, **kw) -> SupabaseBlobStore:
     return SupabaseBlobStore(
-        "https://abc123.supabase.co/", SERVICE_KEY, "documents",
+        "https://abc123.supabase.co/", key, "documents",
         transport=httpx.MockTransport(fake), sleep=lambda s: None, **kw,
     )
 
@@ -102,3 +106,44 @@ def test_keys_are_validated_so_user_input_cannot_choose_a_path():
     for bad in ("../../etc/passwd", "ab/../cd", "ab/" + "z" * 64, ""):
         with pytest.raises(ValueError), store.open_local(bad):
             pass
+
+
+NEW_KEY = "sb_secret_Abc123Def456Ghi789"
+
+
+def uploaded(store: SupabaseBlobStore, tmp_path: Path) -> str:
+    src = tmp_path / "f.bin"
+    src.write_bytes(b"x")
+    return store.put(SHA, src)
+
+
+def test_legacy_jwt_style_key_is_sent_in_both_headers(tmp_path: Path):
+    fake = FakeSupabase(valid_key="eyJlegacy.jwt.key", require_bearer=True)
+    uploaded(make(fake, key="eyJlegacy.jwt.key"), tmp_path)
+    assert len(fake.requests) == 1, "no wasted round trip for legacy keys"
+    assert fake.requests[0].headers["authorization"] == "Bearer eyJlegacy.jwt.key"
+
+
+def test_new_sb_secret_key_goes_in_the_apikey_header_only(tmp_path: Path):
+    fake = FakeSupabase(valid_key=NEW_KEY)
+    uploaded(make(fake, key=NEW_KEY), tmp_path)
+    assert fake.requests[0].headers["apikey"] == NEW_KEY
+    assert all("authorization" not in r.headers for r in fake.requests)
+
+
+def test_if_apikey_only_is_refused_it_falls_back_to_bearer_once_and_remembers(tmp_path: Path):
+    fake = FakeSupabase(valid_key=NEW_KEY, require_bearer=True)
+    store = make(fake, key=NEW_KEY)
+    key = uploaded(store, tmp_path)
+    assert [("authorization" in r.headers) for r in fake.requests] == [False, True]
+
+    with store.open_local(key):
+        pass
+    assert all("authorization" in r.headers for r in fake.requests[2:]), "the fallback is remembered"
+
+
+def test_a_wrong_key_fails_after_a_single_fallback_attempt(tmp_path: Path):
+    fake = FakeSupabase(valid_key="the-real-key")
+    with pytest.raises(StorageError, match="HTTP 401"):
+        uploaded(make(fake, key=NEW_KEY), tmp_path)
+    assert len(fake.requests) == 2

@@ -42,11 +42,29 @@ Vectors from different embedding models can't be compared. Every chunk records t
 
 1. **New project.** Pick a region close to your users and **write down the database password** (you can't read it again). Prefer a password without special characters; otherwise you must URL-encode them later (`@` → `%40`, `/` → `%2F`, `:` → `%3A`).
 2. **Storage → New bucket:** name `documents`, **keep it private** (public off).
-3. Collect three things:
-   - **Project URL** → `SUPABASE_URL` (Project Settings → API; looks like `https://abcdefgh.supabase.co`).
-   - **service_role key** → `SUPABASE_SERVICE_KEY` (Project Settings → API keys; the *secret* one). It bypasses all access rules, so it lives only in Render's environment.
-   - **Session pooler connection string** (the **Connect** button on the project page → *Session pooler*, port **5432**). Do **not** use "Direct connection" (IPv6) or "Transaction pooler" (no prepared statements). It looks like `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`. Turn it into `DATABASE_URL` by changing the start to `postgresql+psycopg://` and adding `?sslmode=require` at the end.
+3. Collect three things from the project's **Connect** panel (the button at the top of the project page). It has tabs; you need two of them:
+   - **Server tab** (the one with the `.env` block): copy **`SUPABASE_URL`** (looks like `https://abcdefgh.supabase.co`) and reveal-and-copy **`SUPABASE_SECRET_KEY`** (the `sb_secret_…` value; click the eye icon, then the copy icon). The secret key bypasses all access rules, so it lives only in Render's environment and your own terminal. The `sb_publishable_…` key and the JWKS URL are not needed.
+   - **Direct tab** (connection strings): choose the **Session pooler** method, port **5432**. Do **not** use "Direct connection" (IPv6-only) or "Transaction pooler" (no prepared statements). The string looks like `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`, and the password is a placeholder that you replace with your database password. Turn it into `DATABASE_URL` by changing the start to `postgresql+psycopg://` and adding `?sslmode=require` at the end.
 4. You don't need to enable extensions by hand: the migrations run `CREATE EXTENSION vector` (and `unaccent`, which Supabase provides, so French keyword search will ignore accents in Phase 3). Migration 0002 also turns on row-level security on every table, so Supabase's built-in REST API can't read your data.
+
+## Step 1b: check your settings from your own PC (recommended)
+
+Before Render is involved, run the self-test with the production values. It checks the database connection (and tells you if you picked the wrong kind of connection string), uploads, downloads and deletes a tiny test file in your Supabase bucket, calls the embedding API, and makes one small Groq call. It never prints a secret.
+
+Set the values **in your own terminal** (never paste them into chat), from `backend/`:
+
+```bash
+$env:DATABASE_URL = "postgresql+psycopg://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require"
+$env:STORAGE_BACKEND = "supabase"; $env:SUPABASE_URL = "https://<ref>.supabase.co"; $env:SUPABASE_SECRET_KEY = "sb_secret_..."
+$env:EMBEDDER = "openai_compat"; $env:EMBEDDING_API_KEY = "..."; $env:EMBEDDING_MODEL = "jina-embeddings-v3"
+$env:EMBEDDING_QUERY_EXTRA = '{"task": "retrieval.query"}'; $env:EMBEDDING_DOCUMENT_EXTRA = '{"task": "retrieval.passage"}'
+```
+
+```bash
+py -m uv run documind doctor
+```
+
+Expected: four lines starting with `[ OK]` and "All checks passed." Each failure prints a `->` hint (wrong connection type, missing bucket, bad key, wrong vector size…). Fix those first; they're the same problems you'd otherwise debug through Render's logs. (`--skip-embeddings` and `--skip-llm` leave out the calls that use provider quota.) Close the terminal afterwards.
 
 ## Step 2: Render (backend)
 
@@ -55,9 +73,9 @@ Vectors from different embedding models can't be compared. Every chunk records t
 
    | Variable | Value |
    |---|---|
-   | `DATABASE_URL` | the string from step 1.3 |
-   | `SUPABASE_URL` | Project URL |
-   | `SUPABASE_SERVICE_KEY` | service_role key |
+   | `DATABASE_URL` | the Session pooler string from step 1 |
+   | `SUPABASE_URL` | the project URL |
+   | `SUPABASE_SECRET_KEY` | the `sb_secret_…` key |
    | `EMBEDDING_API_KEY` | your embedding provider key |
    | `GROQ_API_KEY` | your Groq key |
    | `CORS_ORIGINS` | leave empty for now (step 4) |
@@ -107,7 +125,7 @@ Copy the `dm_…` key it prints (shown once). Close that terminal afterwards so 
 | Render deploy fails on the migration with *Tenant or user not found* | Wrong pooler user: it must be `postgres.<project-ref>`, not plain `postgres`. |
 | *connection timed out* / network unreachable to the database | You used the **direct** connection (IPv6). Switch to the Session pooler string. |
 | *password authentication failed* | Wrong password, or special characters not URL-encoded in `DATABASE_URL`. |
-| Upload fails with `storage_error` | Bucket name doesn't match `SUPABASE_BUCKET`, the bucket doesn't exist, or the service key is wrong. |
+| Upload fails with `storage_error` | Bucket name doesn't match `SUPABASE_BUCKET`, the bucket doesn't exist, or the key is wrong. `documind doctor` shows the HTTP status. If it's 401/403 with an `sb_secret_…` key, try the **legacy `service_role` key** (Project Settings → API Keys → Legacy) as `SUPABASE_SECRET_KEY`: the app sends new-style keys in the `apikey` header only, as Supabase documents, and retries with a bearer header if that's refused. This behaviour has been tested with fakes only, not yet against a live Supabase project. |
 | Document stays "En attente" | The in-process worker isn't running: check `RUN_WORKER_IN_API=true` and the logs. |
 | Document ends in `embedding_error` | Wrong provider key or model name, or the vectors aren't 1024-dimensional (the error message says which). |
 | `embedding_unavailable` / `llm_rate_limited` | Provider rate limit: wait a minute; the client already retried. |
@@ -115,7 +133,7 @@ Copy the `dm_…` key it prints (shown once). Close that terminal afterwards so 
 
 ## Security checklist for a public deployment
 
-- **The service-role key and database password exist only in Render's environment.** If either leaks, rotate it in Supabase.
+- **The secret key and database password exist only in Render's environment (and your own terminal).** If either leaks, rotate it in Supabase.
 - **No public sign-up;** whoever holds a `dm_…` key can use your Groq and embedding quota. Share keys carefully. There's no rate limiting yet (Phase 6 on the project plan).
 - API keys live in the browser's `localStorage`, which is fine for a personal or demo deployment but not for a multi-user product. Proper login (e.g. Supabase Auth) would replace it.
 - Uploaded documents and questions are sent to your embedding provider and to Groq. Don't put confidential documents through them unless their terms suit you.
