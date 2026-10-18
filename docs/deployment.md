@@ -78,6 +78,11 @@ server has none, so Cloudflare does it, with the **same bge-m3 model** you use l
 
 The dashboard wording may differ slightly from these steps; the Account ID and a Workers AI token are all you need.
 
+> **Already verified once.** This exact stack (Supabase database + storage, Cloudflare bge-m3, Groq, with the
+> indexing worker inside the API) was rehearsed end to end on 2026-10-18: upload, indexing in about 5 seconds,
+> a cited answer in about a second, a refusal on an unanswerable question, and deletion. The two parts that
+> aren't covered by that rehearsal are the Render and Vercel hosting steps themselves.
+
 ## Step 3: check your settings from your own PC (recommended)
 
 Before Render is involved, run the self-test with the real values. It checks the database connection (and tells
@@ -191,9 +196,9 @@ $1 that is cancelled straight away), and some users report that a card is requir
 | Render deploy fails on the migration with *Tenant or user not found* | Wrong pooler user: it must be `postgres.<project-ref>`, not plain `postgres`. |
 | *connection timed out* to the database | You used the **Direct** connection (IPv6). Switch to the Session pooler string. |
 | *password authentication failed* | Wrong password, or special characters not URL-encoded in `DATABASE_URL`. |
-| Upload fails with `storage_error` | The bucket name or key is wrong, or the bucket doesn't exist. `documind doctor` shows the HTTP status. If it's 401/403 with an `sb_secret_…` key, try the **legacy `service_role` key** (Project Settings → API Keys → Legacy) as `SUPABASE_SECRET_KEY`. This behaviour is tested with fakes only, not against a live Supabase project. |
+| Upload fails with `storage_error` | The bucket name or key is wrong, or the bucket doesn't exist. `documind doctor` shows the HTTP status. `sb_secret_…` keys were verified against a live project (they work with the `apikey` header alone). If you still get 401/403, try the **legacy `service_role` key** (Project Settings → API Keys → Legacy) as `SUPABASE_SECRET_KEY`. |
 | Document stays "En attente" | The in-process worker isn't running: check `RUN_WORKER_IN_API=true` and the logs. |
-| Document ends in `embedding_error` | Wrong Cloudflare token or Account ID in the URL, or the vectors aren't 1024-dimensional (the message says which). If the response format is the problem, set `EMBEDDING_API_STYLE=cloudflare` and drop the `/v1` from the base URL. The Cloudflare response format for bge-m3 couldn't be confirmed from its docs, which is why the app understands both. |
+| Document ends in `embedding_error` | Wrong Cloudflare token or Account ID in the URL, or the vectors aren't 1024-dimensional (the message says which). Verified against a live account: Cloudflare's OpenAI-compatible endpoint (`…/ai/v1`) returns standard OpenAI-format 1024-dimensional bge-m3 vectors. Its native endpoint also works (`EMBEDDING_API_STYLE=cloudflare`, base URL without `/v1`) and is only a fallback. |
 | `embedding_unavailable` | The daily allowance is used up, or a rate limit: wait. |
 | Out-of-memory restarts while indexing a big PDF | The free instance has 512 MB. Lower `MAX_UPLOAD_BYTES`, or split the PDF. |
 
