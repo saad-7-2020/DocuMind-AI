@@ -29,12 +29,13 @@ interface UploadTask {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function DocumentsView({
-  docs, loaded, refresh, onOpen,
+  docs, loaded, refresh, onOpen, maxUploadBytes,
 }: {
   docs: DocumentSummary[];
   loaded: boolean;
   refresh: () => Promise<void>;
   onOpen: (t: ViewerTarget) => void;
+  maxUploadBytes?: number;
 }) {
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const [over, setOver] = useState(false);
@@ -47,6 +48,10 @@ export function DocumentsView({
     setTasks((all) => all.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
   async function uploadOne(file: File) {
+    if (maxUploadBytes && file.size > maxUploadBytes) {
+      toast("error", `« ${file.name} » fait ${formatBytes(file.size)} : la limite est de ${formatBytes(maxUploadBytes)}.`);
+      return;
+    }
     const id = `${file.name}-${Date.now()}-${Math.random()}`;
     setTasks((all) => [{ id, name: file.name, size: file.size, phase: "uploading", progress: 0 }, ...all]);
     try {
@@ -145,7 +150,7 @@ export function DocumentsView({
         <div className="dropzone-icon"><IconUpload size={22} /></div>
         <div>
           <strong>Glissez-déposez vos fichiers ici</strong>
-          <div className="muted">ou cliquez pour parcourir · PDF, TXT · 50 Mo max · plusieurs fichiers acceptés</div>
+          <div className="muted">ou cliquez pour parcourir · PDF, TXT · {maxUploadBytes ? formatBytes(maxUploadBytes) : "50 Mo"} max · plusieurs fichiers acceptés</div>
         </div>
         <input ref={inputRef} type="file" accept={ACCEPT} multiple hidden
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />

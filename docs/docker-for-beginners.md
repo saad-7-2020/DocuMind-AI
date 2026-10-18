@@ -1,7 +1,9 @@
 # Docker, explained for this project
 
-You don't need to install or run Docker to deploy DocuMind AI: **Render builds and runs the container for
-you.** This page explains what it's doing, so you can understand the build logs and talk about it in
+You don't need Docker to deploy DocuMind AI: the recommended free setup runs the backend on Vercel, which
+needs no container. The project still ships a production [Dockerfile](../backend/Dockerfile) (used by the
+optional Render setup, and by anyone who wants to run the API in a container), and Docker is a core skill for an
+AI engineer. This page explains the Dockerfile so you can read container build logs and talk about it in
 interviews.
 
 ## The idea in four sentences
@@ -31,7 +33,7 @@ reuses unchanged layers, which makes rebuilds fast.
 `backend/.dockerignore` lists what is *not* copied into the image (your virtualenv, tests, and above all your
 `.env` file with secrets).
 
-## How this connects to Render
+## How a host like Render uses it
 
 1. You push code to GitHub.
 2. Render sees the push, reads `render.yaml`, and runs the Dockerfile to build an image (this is the **build log**).

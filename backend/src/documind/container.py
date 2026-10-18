@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import structlog
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -25,6 +26,8 @@ from documind.rag.query_pipeline import QueryPipeline
 from documind.retrieval.dense import DenseRetriever
 from documind.worker.runner import Worker
 
+log = structlog.get_logger(__name__)
+
 
 @dataclass
 class Container:
@@ -41,6 +44,20 @@ class Container:
 
     def close(self) -> None:
         self.engine.dispose()
+
+    def run_pending_jobs(self, max_jobs: int = 5) -> int:
+        """In inline mode (serverless hosting), process queued jobs now, inside the current request.
+
+        Never raises: a failure here must not fail the request that triggered it. The job stays queued
+        (or is re-queued with backoff) and is picked up again by the next call.
+        """
+        if not self.settings.inline_jobs:
+            return 0
+        try:
+            return self.worker.run_until_empty(max_jobs=max_jobs)
+        except Exception as e:
+            log.warning("inline_jobs_failed", error_type=type(e).__name__)
+            return 0
 
 
 def build_embedder(settings: Settings) -> Embedder:
@@ -106,7 +123,7 @@ def build_blob_store(settings: Settings) -> BlobStore:
 def build_container(
     settings: Settings, *, embedder: Embedder | None = None, llm: LLMProvider | None = None
 ) -> Container:
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.database_url, settings.db_pool_size, settings.db_max_overflow)
     sf = make_session_factory(engine)
     blobs = build_blob_store(settings)
     embedder = embedder or build_embedder(settings)

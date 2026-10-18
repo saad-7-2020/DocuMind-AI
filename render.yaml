@@ -1,7 +1,9 @@
+# OPTIONAL alternative to hosting the backend on Vercel (the recommended $0 path in docs/deployment.md).
+# Render may ask for a payment card to verify an account, so use this only if you are comfortable with that.
+#
 # Render Blueprint: one FREE web service running the API + the ingestion worker thread.
 # Render dashboard -> New -> Blueprint -> pick this repository. Values marked `sync: false` are
 # secrets: Render asks you for them in the dashboard (they are never stored in git).
-# Everything here is on free plans. Step-by-step guide: docs/deployment.md
 services:
   - type: web
     name: documind-api

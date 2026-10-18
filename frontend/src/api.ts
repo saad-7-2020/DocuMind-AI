@@ -84,6 +84,7 @@ export interface Health {
   status: string;
   database?: string;
   embedder?: string;
+  max_upload_bytes?: number;
 }
 
 /** An RFC 9457 problem+json error from the API, or a network failure (status 0). */

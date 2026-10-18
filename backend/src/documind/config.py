@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     worker_poll_interval_s: float = 1.0
     job_timeout_s: int = 1800
     run_worker_in_api: bool = False  # run the ingestion worker as a thread of the API process
+    # Serverless hosting (Vercel): no background thread survives the response, so run queued jobs inside
+    # the request that created them (and retry due ones while the client polls the job).
+    inline_jobs: bool = False
+    db_pool_size: int = Field(default=5, ge=1, le=20)  # per process; keep small on serverless
+    db_max_overflow: int = Field(default=5, ge=0, le=20)
 
     # Browser access (the frontend on another origin, e.g. Vercel). Empty = CORS disabled.
     # Accepts a comma-separated list: CORS_ORIGINS=https://app.vercel.app,http://localhost:5173

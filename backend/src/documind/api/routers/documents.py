@@ -96,6 +96,7 @@ def upload_document(
             raise DuplicateDocument(existing_document_id=str(existing)) from None
     finally:
         spooled.path.unlink(missing_ok=True)
+    container.run_pending_jobs()  # serverless mode: index now; otherwise the worker picks the job up
     return UploadAccepted(document_id=doc.id, job_id=job.id, status=doc.status)
 
 
@@ -167,6 +168,7 @@ def delete_document(document_id: uuid.UUID, container: ContainerDep, user: UserD
         # before the worker physically removes it.
         doc.status = DocumentStatus.DELETING.value
         job = JobQueue.enqueue(s, user.id, doc.id, JobKind.DELETE)
+    container.run_pending_jobs()
     return JobAccepted(job_id=job.id)
 
 
@@ -178,4 +180,5 @@ def reindex_document(document_id: uuid.UUID, container: ContainerDep, user: User
             raise Conflict(f"Document is {doc.status}; wait until it is ready or failed.")
         doc.status = DocumentStatus.PENDING.value
         job = JobQueue.enqueue(s, user.id, doc.id, JobKind.REINDEX)
+    container.run_pending_jobs()
     return JobAccepted(job_id=job.id)

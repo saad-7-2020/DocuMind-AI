@@ -11,4 +11,4 @@ reproducible evaluation framework.
 - Phase 2 guide (decisions, run commands, acceptance): [docs/phase-2.md](docs/phase-2.md)
 - Frontend (React + TypeScript): `frontend/`, run with `npm --prefix frontend run dev`
 - **How to test the app:** [docs/testing.md](docs/testing.md)
-- **Deploy for $0 (Vercel + Render + Supabase + Cloudflare):** [docs/deployment.md](docs/deployment.md), with [Docker explained](docs/docker-for-beginners.md)
+- **Deploy for $0, no card (Vercel + Supabase + Cloudflare + Groq):** [docs/deployment.md](docs/deployment.md), with [Docker explained](docs/docker-for-beginners.md)

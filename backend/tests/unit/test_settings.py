@@ -37,3 +37,19 @@ def test_supabase_storage_requires_credentials():
 
     with pytest.raises(ValueError, match="SUPABASE_URL"):
         build_blob_store(settings(storage_backend="supabase"))
+
+
+def test_serverless_settings(monkeypatch: pytest.MonkeyPatch):
+    assert settings().inline_jobs is False and settings().db_pool_size == 5
+    monkeypatch.setenv("INLINE_JOBS", "true")
+    monkeypatch.setenv("DB_POOL_SIZE", "2")
+    s = settings()
+    assert s.inline_jobs is True and s.db_pool_size == 2
+
+
+def test_engine_pool_size_and_connect_timeout_follow_the_settings():
+    from documind.db.session import make_engine
+
+    engine = make_engine("postgresql+psycopg://u:p@127.0.0.1:1/db", pool_size=2, max_overflow=1)
+    assert engine.pool.size() == 2 and engine.pool._max_overflow == 1
+    engine.dispose()

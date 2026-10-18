@@ -114,7 +114,8 @@ export function App() {
           <ChatView docs={ready} docsLoaded={docsLoaded} onOpenSource={setViewer} onGoDocuments={() => go("documents")} />
         )}
         {route === "documents" && (
-          <DocumentsView docs={docs} loaded={docsLoaded} refresh={refreshDocs} onOpen={setViewer} />
+          <DocumentsView docs={docs} loaded={docsLoaded} refresh={refreshDocs} onOpen={setViewer}
+            maxUploadBytes={health?.max_upload_bytes} />
         )}
         {route === "settings" && (
           <SettingsView health={health} theme={theme} setTheme={setTheme}

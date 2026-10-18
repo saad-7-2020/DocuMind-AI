@@ -1,10 +1,9 @@
-# Free keep-alive: once a day, call the deployed API's /health/ready.
-#   - wakes the Render service if it is asleep, and
-#   - touches the Supabase database, which should keep a free project from being paused for inactivity
-#     (Supabase pauses free projects after about 7 days of low activity).
+# Free keep-alive: once a day, call the deployed API's /health/ready, which queries the database.
+# That should keep a free Supabase project from being paused for inactivity
+# (Supabase pauses free projects after about 7 days of low activity).
 #
 # Setup: GitHub -> your repository -> Settings -> Secrets and variables -> Actions -> Variables tab ->
-# New repository variable:  API_URL = https://<your-service>.onrender.com   (no trailing slash)
+# New repository variable:  API_URL = https://<your-backend>.vercel.app   (no trailing slash)
 # Until that variable exists this workflow does nothing. Actions are free for public repositories.
 # Note: GitHub switches off scheduled workflows in a repository with no activity for 60 days;
 # re-enable it from the Actions tab if that happens.
@@ -20,7 +19,7 @@ jobs:
     if: ${{ vars.API_URL != '' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Wake the API and touch the database
+      - name: Call the API (touches the database)
         env:
           API_URL: ${{ vars.API_URL }}
         run: |

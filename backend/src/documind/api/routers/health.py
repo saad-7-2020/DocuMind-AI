@@ -21,4 +21,7 @@ def ready(container: ContainerDep) -> JSONResponse:
             conn.execute(text("SELECT 1"))
     except Exception:
         return JSONResponse({"status": "unavailable", "database": "down"}, status_code=503)
-    return JSONResponse({"status": "ok", "database": "up", "embedder": container.embedder.model_id})
+    return JSONResponse({
+        "status": "ok", "database": "up", "embedder": container.embedder.model_id,
+        "max_upload_bytes": container.settings.max_upload_bytes,
+    })

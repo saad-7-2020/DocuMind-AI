@@ -19,6 +19,10 @@ def get_job(job_id: uuid.UUID, container: ContainerDep, user: UserDep) -> JobOut
         job = s.scalar(select(Job).where(Job.id == job_id, Job.owner_id == user.id))
     if job is None:
         raise NotFound("Job not found.")
+    if job.status == "queued" and container.run_pending_jobs():
+        # Serverless mode: a retry that is now due runs while the client polls.
+        with container.sf() as s:
+            job = s.scalar(select(Job).where(Job.id == job_id, Job.owner_id == user.id)) or job
     return JobOut(
         id=job.id, kind=job.kind, status=job.status, stage=job.stage, progress=job.progress,
         attempts=job.attempts, document_id=job.document_id,
