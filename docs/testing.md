@@ -12,6 +12,10 @@ All commands are for **PowerShell**. Open a terminal in `C:\My_projects\IA\RAG`.
 
 ## 0. One-time setup
 
+> **Tip on commands.** The commands below start with `py -m uv run …`. If your prompt begins with `(documind)`,
+> the project's virtual environment is already active and that form fails with *No module named uv*: leave out
+> the `py -m uv run` prefix (for example `documind worker`, `pytest`), or type `deactivate` first.
+
 Node.js is portable on A:, so add it to PATH in each new terminal where you run the frontend:
 
 ```bash

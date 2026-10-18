@@ -84,6 +84,10 @@ Before Render is involved, run the self-test with the real values. It checks the
 you if you chose the wrong kind of connection string), uploads and deletes a tiny test file in your Supabase bucket,
 calls the embedding API, and makes one small Groq call. It never prints a secret.
 
+> **Tip on commands.** If your prompt starts with `(documind)`, the project's virtual environment is already
+> active, and `py -m uv run …` will fail with *No module named uv*. In that case leave out the `py -m uv run`
+> prefix (`documind doctor`, `documind create-user …`), or type `deactivate` first.
+
 Set the values **in your own terminal** (never in chat), from the `backend` folder:
 
 ```bash
