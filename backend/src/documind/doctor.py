@@ -166,11 +166,20 @@ def check_llm(container: Container, settings: Settings) -> Check:
                               f"({result.input_tokens} -> {result.output_tokens} tokens)")
 
 
+Step = tuple[str, Callable[[Container, Settings], Check]]
+
+
+def doctor_steps(*, skip_embeddings: bool = False, skip_llm: bool = False) -> list[Step]:
+    """The checks in order, each with a label, so a caller can announce a step *before* it runs."""
+    steps: list[Step] = [("database", check_database), ("storage", check_storage)]
+    if not skip_embeddings:
+        steps.append(("embeddings (the first call can take a minute)", check_embeddings))
+    if not skip_llm:
+        steps.append(("language model", check_llm))
+    return steps
+
+
 def run_doctor(container: Container, settings: Settings, *, skip_embeddings: bool = False,
                skip_llm: bool = False) -> list[Check]:
-    steps: list[Callable[[Container, Settings], Check]] = [check_database, check_storage]
-    if not skip_embeddings:
-        steps.append(check_embeddings)
-    if not skip_llm:
-        steps.append(check_llm)
-    return [step(container, settings) for step in steps]
+    steps = doctor_steps(skip_embeddings=skip_embeddings, skip_llm=skip_llm)
+    return [step(container, settings) for _, step in steps]

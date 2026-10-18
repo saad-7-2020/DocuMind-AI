@@ -45,18 +45,22 @@ def _worker() -> None:
 
 def _doctor(skip_embeddings: bool, skip_llm: bool) -> int:
     from documind.container import build_container
-    from documind.doctor import run_doctor
+    from documind.doctor import doctor_steps
 
     settings = get_settings()
     container = build_container(settings)
+    checks = []
     try:
-        checks = run_doctor(container, settings, skip_embeddings=skip_embeddings, skip_llm=skip_llm)
+        # Announce each step before running it, so a slow or stuck one is visible instead of silent.
+        for label, step in doctor_steps(skip_embeddings=skip_embeddings, skip_llm=skip_llm):
+            print(f"... checking {label}", flush=True)
+            c = step(container, settings)
+            checks.append(c)
+            print(f"[{' OK' if c.ok else 'FAIL'}] {c.name:<11} {c.detail}", flush=True)
+            if c.hint and not c.ok:
+                print(f"       -> {c.hint}", flush=True)
     finally:
         container.close()
-    for c in checks:
-        print(f"[{' OK' if c.ok else 'FAIL'}] {c.name:<11} {c.detail}")
-        if c.hint and not c.ok:
-            print(f"       -> {c.hint}")
     failed = [c.name for c in checks if not c.ok]
     print()
     print("All checks passed." if not failed else f"{len(failed)} check(s) failed: {', '.join(failed)}")
