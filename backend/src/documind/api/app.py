@@ -64,6 +64,11 @@ def create_app(container: Container) -> FastAPI:
     for r in (health.router, documents.router, jobs.router, query.router):
         app.include_router(r)
 
+    @app.get("/", include_in_schema=False)
+    def root() -> dict:
+        """A friendly front door for anyone who opens the API's address in a browser."""
+        return {"name": "DocuMind AI API", "docs": "/docs", "health": "/health/ready"}
+
     # Added last so it is the outermost middleware: CORS headers also reach error responses.
     # Authentication uses a bearer header, not cookies, so credentials are not allowed cross-origin.
     if container.settings.cors_origins:

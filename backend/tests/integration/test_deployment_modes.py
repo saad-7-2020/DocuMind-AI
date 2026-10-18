@@ -173,3 +173,8 @@ def test_row_level_security_is_enabled_on_every_table(container):
         """)).all()
     assert len(rows) >= 11
     assert [name for name, enabled in rows if not enabled] == []
+
+
+def test_root_gives_a_friendly_pointer_instead_of_not_found(client):
+    r = client.get("/")
+    assert r.status_code == 200 and r.json()["docs"] == "/docs" and r.json()["health"] == "/health/ready"
