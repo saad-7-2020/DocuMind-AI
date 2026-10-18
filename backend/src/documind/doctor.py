@@ -132,7 +132,10 @@ def check_embeddings(container: Container, settings: Settings) -> Check:
     except Exception as e:
         detail = e.detail if isinstance(e, DocuMindError) else _first_line(e)
         return Check("Embeddings", False, f"{emb.model_id}: {detail}",
-                     "Check EMBEDDING_API_KEY, EMBEDDING_BASE_URL and EMBEDDING_MODEL (and EMBEDDING_*_EXTRA).")
+                     "Check EMBEDDING_API_KEY, EMBEDDING_BASE_URL (for Cloudflare it must contain your account id) and "
+                     "EMBEDDING_MODEL. Cloudflare's free allowance is per day (resets 00:00 UTC): errors after "
+                     "heavy use may just mean it is used up. If the response format is the problem, try "
+                     "EMBEDDING_API_STYLE=cloudflare with base URL .../accounts/<id>/ai.")
     ms = int((time.perf_counter() - started) * 1000)
     if query.shape != (settings.embedding_dim,) or docs.shape != (2, settings.embedding_dim):
         return Check("Embeddings", False, f"{emb.model_id}: unexpected vector shape {query.shape}")

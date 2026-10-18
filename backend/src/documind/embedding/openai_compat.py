@@ -1,5 +1,10 @@
 """Hosted embeddings through any OpenAI-compatible `POST {base_url}/embeddings` endpoint
-(Jina, OpenAI, Mistral, …). Used in production, where the local bge-m3 model doesn't fit.
+(Cloudflare Workers AI, Jina, OpenAI, Mistral, …). Used in production, where the local bge-m3 model
+doesn't fit on a free server.
+
+Cloudflare Workers AI runs the same BAAI/bge-m3 model as local development, on a free daily
+allowance. Besides its OpenAI-compatible endpoint it has a native one (`POST {base}/run/{model}`
+with `{"text": [...]}`, vectors in `result.data`); `api_style="cloudflare"` selects that one.
 
 Things that are provider-specific are configuration, not code:
 - extra body fields per kind of text (`EMBEDDING_QUERY_EXTRA` / `EMBEDDING_DOCUMENT_EXTRA`),
@@ -39,6 +44,7 @@ class OpenAICompatEmbedder:
         query_extra: dict[str, Any] | None = None,
         document_extra: dict[str, Any] | None = None,
         send_dimensions: bool = False,
+        api_style: str = "openai",
         timeout_s: float = 30.0,
         max_retries: int = 3,
         chars_per_token: float = 3.2,
@@ -52,6 +58,7 @@ class OpenAICompatEmbedder:
         self.query_extra = query_extra or {}
         self.document_extra = document_extra or {}
         self.send_dimensions = send_dimensions
+        self.api_style = api_style
         self.max_retries = max_retries
         self.chars_per_token = chars_per_token
         self._sleep = sleep
@@ -87,13 +94,16 @@ class OpenAICompatEmbedder:
         return vectors / norms  # cosine similarity == dot product, whatever the provider returns
 
     def _request(self, batch: list[str], extra: dict[str, Any]) -> list[list[float]]:
-        body: dict[str, Any] = {"model": self.model_id, "input": batch, **extra}
-        if self.send_dimensions:
-            body["dimensions"] = self.dim
+        if self.api_style == "cloudflare":
+            path, body = f"/run/{self.model_id}", {"text": batch, **extra}
+        else:
+            path, body = "/embeddings", {"model": self.model_id, "input": batch, **extra}
+            if self.send_dimensions:
+                body["dimensions"] = self.dim
         for attempt in range(1, self.max_retries + 1):
             delay = BACKOFF_BASE_S * 2 ** (attempt - 1) * (0.5 + random.random())
             try:
-                response = self._client.post("/embeddings", json=body)
+                response = self._client.post(path, json=body)
             except httpx.TimeoutException:
                 error: EmbeddingError = EmbeddingUnavailable("Embedding provider timed out.")
             except httpx.TransportError:
@@ -125,9 +135,8 @@ class OpenAICompatEmbedder:
 
     def _parse(self, response: httpx.Response, expected: int) -> list[list[float]]:
         try:
-            data = sorted(response.json()["data"], key=lambda item: item["index"])
-            vectors = [item["embedding"] for item in data]
-        except (KeyError, TypeError, ValueError) as e:
+            vectors = self._extract_vectors(response.json())
+        except (KeyError, IndexError, TypeError, ValueError) as e:
             raise EmbeddingError("Unexpected response format from the embedding provider.") from e
         if len(vectors) != expected:
             raise EmbeddingError(f"Provider returned {len(vectors)} embeddings for {expected} inputs.")
@@ -138,3 +147,15 @@ class OpenAICompatEmbedder:
                     "Check the model name, or set EMBEDDING_SEND_DIMENSIONS if the provider supports it."
                 )
         return vectors
+
+    @staticmethod
+    def _extract_vectors(payload: Any) -> list[list[float]]:
+        """Accept the shapes seen in practice: OpenAI (`data[].embedding`, optionally with `index`),
+        Cloudflare native (`result.data` = list of vectors) and a bare list of vectors in `data`."""
+        if payload.get("success") is False:
+            raise ValueError("provider reported failure")
+        data = payload["result"]["data"] if "result" in payload else payload["data"]
+        if data and isinstance(data[0], dict):
+            data = sorted(data, key=lambda item: item.get("index", 0))
+            return [item["embedding"] for item in data]
+        return [list(vector) for vector in data]

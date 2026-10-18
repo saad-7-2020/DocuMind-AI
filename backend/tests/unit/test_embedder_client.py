@@ -137,3 +137,77 @@ def test_token_estimate_is_conservative_for_french():
     assert emb.count_tokens(text) > len(text) / 4, "leans high: chunks get smaller, never truncated"
     assert emb.count_tokens("") == 0
     assert emb.tokenizer_id == "chars/3.2"
+
+
+# ── Cloudflare Workers AI (free bge-m3) ─────────────────
+
+CF_BASE = "https://api.cloudflare.com/client/v4/accounts/acct123/ai"
+
+
+def cf_embedder(handler, **kw) -> OpenAICompatEmbedder:
+    return OpenAICompatEmbedder(
+        base_url=kw.pop("base_url", CF_BASE), api_key="cf-token", model="@cf/baai/bge-m3", dim=DIM,
+        api_style=kw.pop("api_style", "cloudflare"), transport=httpx.MockTransport(handler),
+        sleep=lambda s: None, **kw,
+    )
+
+
+def test_cloudflare_native_request_and_response_shape():
+    seen = {}
+
+    def handler(request):
+        seen.update(url=str(request.url), auth=request.headers["authorization"], body=json.loads(request.content))
+        n = len(seen["body"]["text"])
+        return httpx.Response(200, json={"success": True, "errors": [],
+                                         "result": {"shape": [n, DIM], "data": [vec(i) for i in range(n)]}})
+
+    out = cf_embedder(handler).embed_documents(["un", "deux"])
+    assert seen["url"] == f"{CF_BASE}/run/@cf/baai/bge-m3" and seen["auth"] == "Bearer cf-token"
+    assert seen["body"] == {"text": ["un", "deux"]}
+    assert out.shape == (2, DIM) and np.allclose(np.linalg.norm(out, axis=1), 1.0)
+
+
+def test_openai_style_endpoint_on_cloudflare_uses_the_embeddings_path():
+    seen = {}
+
+    def handler(request):
+        seen.update(url=str(request.url), body=json.loads(request.content))
+        return ok_response(request)
+
+    cf_embedder(handler, base_url=CF_BASE + "/v1", api_style="openai").embed_query("x")
+    assert seen["url"] == f"{CF_BASE}/v1/embeddings"
+    assert seen["body"] == {"model": "@cf/baai/bge-m3", "input": ["x"]}
+
+
+def test_parser_accepts_openai_items_without_index_and_bare_vector_lists():
+    def without_index(request):
+        n = len(json.loads(request.content)["input"])
+        return httpx.Response(200, json={"data": [{"embedding": vec(i)} for i in range(n)]})
+
+    def bare_lists(request):
+        n = len(json.loads(request.content)["input"])
+        return httpx.Response(200, json={"data": [vec(i) for i in range(n)]})
+
+    assert make(without_index).embed_documents(["a", "b"]).shape == (2, DIM)
+    assert make(bare_lists).embed_documents(["a", "b"]).shape == (2, DIM)
+
+
+def test_provider_reported_failure_is_an_error_without_leaking_details():
+    def handler(request):
+        return httpx.Response(200, json={"success": False, "errors": [{"message": "echo: secret doc text"}]})
+
+    with pytest.raises(EmbeddingError) as exc:
+        cf_embedder(handler).embed_query("x")
+    assert "secret doc text" not in exc.value.detail
+
+
+def test_daily_allowance_exhausted_is_not_retried_forever():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(429, json={"errors": [{"message": "daily limit"}]})
+
+    with pytest.raises(EmbeddingUnavailable):
+        cf_embedder(handler, max_retries=3).embed_query("x")
+    assert len(calls) == 3

@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     embedding_query_extra: dict[str, Any] = {}  # extra JSON body fields for questions, e.g. {"task": "retrieval.query"}
     embedding_document_extra: dict[str, Any] = {}  # ... for document chunks, e.g. {"task": "retrieval.passage"}
     embedding_send_dimensions: bool = False  # send "dimensions": EMBEDDING_DIM (OpenAI-style truncation)
+    embedding_api_style: Literal["openai", "cloudflare"] = "openai"  # cloudflare = native /run/{model} endpoint
     embedding_timeout_s: float = 30.0
     embedding_max_retries: int = Field(default=3, ge=1, le=5)
     embedding_chars_per_token: float = 3.2  # no local tokenizer: conservative estimate for French

@@ -1,0 +1,29 @@
+# Free keep-alive: once a day, call the deployed API's /health/ready.
+#   - wakes the Render service if it is asleep, and
+#   - touches the Supabase database, which should keep a free project from being paused for inactivity
+#     (Supabase pauses free projects after about 7 days of low activity).
+#
+# Setup: GitHub -> your repository -> Settings -> Secrets and variables -> Actions -> Variables tab ->
+# New repository variable:  API_URL = https://<your-service>.onrender.com   (no trailing slash)
+# Until that variable exists this workflow does nothing. Actions are free for public repositories.
+# Note: GitHub switches off scheduled workflows in a repository with no activity for 60 days;
+# re-enable it from the Actions tab if that happens.
+name: keep-alive
+
+on:
+  schedule:
+    - cron: "23 7 * * *"   # every day at 07:23 UTC
+  workflow_dispatch:        # also lets you run it by hand from the Actions tab
+
+jobs:
+  ping:
+    if: ${{ vars.API_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the API and touch the database
+        env:
+          API_URL: ${{ vars.API_URL }}
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+               --retry 4 --retry-delay 20 --retry-all-errors \
+               "$API_URL/health/ready"

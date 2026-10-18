@@ -1,21 +1,21 @@
-# Render Blueprint: one web service running the API + the ingestion worker thread.
-# Render dashboard -> New -> Blueprint -> pick this repository. Values marked `sync: false`
-# are secrets: Render asks you for them in the dashboard (they are never stored in git).
-# Full walkthrough: docs/deployment.md
+# Render Blueprint: one FREE web service running the API + the ingestion worker thread.
+# Render dashboard -> New -> Blueprint -> pick this repository. Values marked `sync: false` are
+# secrets: Render asks you for them in the dashboard (they are never stored in git).
+# Everything here is on free plans. Step-by-step guide: docs/deployment.md
 services:
   - type: web
     name: documind-api
-    runtime: docker
+    runtime: docker             # Render builds the image from backend/Dockerfile; you never run Docker yourself
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: free                  # free: sleeps after 15 min idle (~1 min to wake). Change to `starter` to stay on.
+    plan: free                  # free: sleeps after 15 min without requests (about 1 min to wake up)
     region: frankfurt           # use the region closest to your Supabase project
     healthCheckPath: /health/live
     envVars:
-      # --- Database (Supabase) ---
+      # --- Database (Supabase, free plan) ---
       - key: DATABASE_URL       # Supabase "Session pooler" string, with the postgresql+psycopg:// prefix
         sync: false
-      # --- File storage (Supabase Storage, private bucket) ---
+      # --- File storage (Supabase Storage, free plan, private bucket) ---
       - key: STORAGE_BACKEND
         value: supabase
       - key: SUPABASE_URL
@@ -24,26 +24,22 @@ services:
         sync: false
       - key: SUPABASE_BUCKET
         value: documents
-      - key: STORAGE_DIR        # upload spool only (ephemeral disk is fine for that)
+      - key: STORAGE_DIR        # upload spool only (the ephemeral disk is fine for that)
         value: /tmp/documind
       - key: MAX_UPLOAD_BYTES
         value: "20971520"       # 20 MB: keeps memory use predictable on a 512 MB instance
-      # --- Embeddings (hosted; example: Jina) ---
+      # --- Embeddings: Cloudflare Workers AI, free daily allowance, same bge-m3 model as local ---
       - key: EMBEDDER
         value: openai_compat
-      - key: EMBEDDING_BASE_URL
-        value: https://api.jina.ai/v1
-      - key: EMBEDDING_API_KEY
+      - key: EMBEDDING_BASE_URL # https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1
+        sync: false
+      - key: EMBEDDING_API_KEY  # a Cloudflare API token with the "Workers AI" permission
         sync: false
       - key: EMBEDDING_MODEL
-        value: jina-embeddings-v3
+        value: "@cf/baai/bge-m3"
       - key: EMBEDDING_DIM
         value: "1024"
-      - key: EMBEDDING_QUERY_EXTRA
-        value: '{"task": "retrieval.query"}'
-      - key: EMBEDDING_DOCUMENT_EXTRA
-        value: '{"task": "retrieval.passage"}'
-      # --- LLM (Groq) ---
+      # --- LLM: Groq, free tier ---
       - key: GROQ_API_KEY
         sync: false
       # --- Runtime ---

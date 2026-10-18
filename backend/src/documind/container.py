@@ -60,6 +60,7 @@ def build_embedder(settings: Settings) -> Embedder:
             query_extra=settings.embedding_query_extra,
             document_extra=settings.embedding_document_extra,
             send_dimensions=settings.embedding_send_dimensions,
+            api_style=settings.embedding_api_style,
             timeout_s=settings.embedding_timeout_s,
             max_retries=settings.embedding_max_retries,
             chars_per_token=settings.embedding_chars_per_token,
