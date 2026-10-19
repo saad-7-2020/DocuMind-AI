@@ -149,6 +149,12 @@ Close the terminal afterwards so the secrets don't linger in your session.
    | `DB_MAX_OVERFLOW` | `2` |
    | `JOB_TIMEOUT_S` | `400` |
    | `LOG_LEVEL` | `INFO` |
+   | `IP_HASH_SALT` | a long random text (for example 40 random characters; never reuse a password) |
+   | `CRON_SECRET` | another long random text: Vercel sends it to the daily cleanup job that deletes expired demo accounts |
+   | `CREATOR_NAME` | the name the assistant gives when asked who created it (default `Saad`) |
+
+   Optional: `LLM_LIGHT_MODEL` (small model for rewriting follow-ups and describing documents, default
+   `llama-3.1-8b-instant`), and the `DEMO_*` limits listed in [backend/.env.example](../backend/.env.example).
 
    Leave `CORS_ORIGINS` for step 7.
 5. **Deploy.** When it finishes, open `https://<your-project>.vercel.app/health/ready`. Expected: `{"status":"ok","database":"up","embedder":"@cf/baai/bge-m3","max_upload_bytes":4000000}`. `/docs` shows the interactive API. If you see a Vercel *login page* instead, turn off **Vercel Authentication** for this project (Settings → Deployment Protection): an API called from a website can't log in.
@@ -185,9 +191,26 @@ touches the Supabase database, which should stop Supabase from pausing your proj
 GitHub: *Settings → Secrets and variables → Actions → Variables → New repository variable*: `API_URL` =
 `https://<your-backend>.vercel.app`. Test it from the **Actions** tab with *Run workflow*.
 
+## Step 8b: the demo accounts (recruiters)
+
+The login screen has a **Try the demo** button. It creates a private account in one click, with no email and no
+password: the visitor gets an access code like `docu-mindk43trs8q2m` and a direct link
+(`https://<your-site>/#/u/docu-mindk43trs8q2m`) that opens their space. A demo account is limited (5 documents,
+40 questions a day, 20 chats) and is deleted after 7 days without use, so a flood of visitors cannot fill your free
+storage. A wrong code is throttled (10 failures per network per 15 minutes). The cleanup runs daily through the
+`crons` entry in [backend/vercel.json](../backend/vercel.json) and also whenever a new demo is created; you can run
+it by hand with `documind purge-demo`.
+
+**Applying the new tables** (migration `0003`: chats, document descriptions, demo accounts) is required once,
+**before** the new code answers any request. From `backend/`, with the production `DATABASE_URL` set as in step 3:
+
+```bash
+py -m uv run alembic upgrade head
+```
+
 ## Step 9: smoke test
 
-- [ ] Open the website address and paste your `dm_…` key.
+- [ ] Open the website address and paste your `dm_…` key, or click **Try the demo** and check the access code and direct link work (log out, then open the link).
 - [ ] Settings shows your backend address, status "Opérationnelle" and the embedding model name.
 - [ ] The upload zone says "4 Mo max". Upload a small PDF: it goes straight to "Indexé", and a new file appears in Supabase → Storage → `documents`.
 - [ ] Ask a question the document answers: the answer has a citation, and clicking it opens the page with the quote highlighted.

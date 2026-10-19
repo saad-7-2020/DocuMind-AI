@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { useI18n } from "../i18n";
 import { IconAlert, IconCheck, IconX } from "./Icons";
 
 type Kind = "success" | "error" | "info";
@@ -7,6 +8,7 @@ interface Toast { id: number; kind: Kind; text: string }
 const ToastContext = createContext<(kind: Kind, text: string) => void>(() => {});
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t: tr } = useI18n();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const push = useCallback((kind: Kind, text: string) => {
     const id = Date.now() + Math.random();
@@ -23,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {t.kind === "error" ? <IconAlert /> : <IconCheck />}
             </span>
             <span style={{ flex: 1 }}>{t.text}</span>
-            <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label="Fermer"
+            <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={tr("common.close")}
               onClick={() => setToasts((all) => all.filter((x) => x.id !== t.id))}>
               <IconX size={14} />
             </button>

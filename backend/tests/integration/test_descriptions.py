@@ -60,7 +60,8 @@ def test_a_failing_description_never_blocks_the_upload_and_can_be_regenerated(ma
         if state["fail"]:
             raise RuntimeError("small model unavailable")
         return json.dumps({"summary": "Un contrat de maintenance.", "keywords": ["contrat", " ", "maintenance"],
-                           "suggested_questions": ["Quel est le préavis ?"] * 5})
+                           "suggested_questions": ["Quel préavis ?", "quel PRÉAVIS ?", "Quel prix ?", "Quelle durée ?",
+                                                 "Quelles pénalités ?"]})
 
     client, container, h = make(ScriptedLLM(light))
     doc_id = upload(client, h, contract_pdf)
@@ -74,7 +75,8 @@ def test_a_failing_description_never_blocks_the_upload_and_can_be_regenerated(ma
     body = r.json()
     assert body["summary"] == "Un contrat de maintenance."
     assert body["keywords"] == ["contrat", "maintenance"], "blank keywords are dropped"
-    assert len(body["suggested_questions"]) == 3, "capped at three"
+    assert body["suggested_questions"] == ["Quel préavis ?", "Quel prix ?", "Quelle durée ?"], \
+        "duplicates (any case) are dropped, then capped at three"
 
 
 def test_describe_is_private_and_needs_a_ready_document(make, contract_pdf):

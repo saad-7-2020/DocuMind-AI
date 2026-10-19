@@ -47,8 +47,12 @@ DESCRIBE_SCHEMA: dict = {
 def _clean_list(raw: object, limit: int, max_len: int) -> list[str]:
     if not isinstance(raw, list):
         return []
-    items = [str(x).strip() for x in raw if str(x).strip()]
-    return [x[:max_len] for x in items[:limit]]
+    items: list[str] = []
+    for x in raw:
+        item = str(x).strip()[:max_len]
+        if item and item.lower() not in {i.lower() for i in items}:
+            items.append(item)
+    return items[:limit]
 
 
 class DocumentDescriber:
