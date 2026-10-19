@@ -1,4 +1,4 @@
-# Deploy DocuMind AI for $0 (no credit card)
+﻿# Deploy DocuMind AI for $0 (no credit card)
 
 This guide puts the app on the internet using **only free plans**, so you can put a live link on your
 resume. It assumes you have never deployed anything: every term is explained, and every step says what to
@@ -11,11 +11,11 @@ click.
 ## The picture
 
 ```
- Visitor's browser ──► Vercel project 1 ......... the website (React), static files
-        │
-        └─ HTTPS, with your API key ─► Vercel project 2 ......... the "backend": FastAPI as a serverless function
-                                          │        │        │
-                                          ▼        ▼        ▼
+ Visitor's browser â”€â”€â–º Vercel project 1 ......... the website (React), static files
+        â”‚
+        â””â”€ HTTPS, with your API key â”€â–º Vercel project 2 ......... the "backend": FastAPI as a serverless function
+                                          â”‚        â”‚        â”‚
+                                          â–¼        â–¼        â–¼
                                    Supabase    Supabase   Cloudflare            Groq
                                    database    Storage    Workers AI            (writes the
                                    (text,      (the       (turns text           answers)
@@ -35,7 +35,7 @@ Words you'll meet:
 | **Serverless function** | Your backend code, started by the host when a request arrives and stopped afterwards. You don't manage a server. |
 | **Deploy** | Copy your code to a company's computers so it runs on the internet instead of on your PC. |
 | **Environment variable** | A named setting (like `GROQ_API_KEY`) given to a program from the outside. Secrets live here, never in your code or in git. |
-| **API key** | A password-like string that identifies you to a service (Groq, Cloudflare…) or to *your own* API (the `dm_…` key). |
+| **API key** | A password-like string that identifies you to a service (Groq, Cloudflareâ€¦) or to *your own* API (the `dm_â€¦` key). |
 | **Cold start** | After some idle time the first request starts the function from scratch, which takes a few seconds. |
 
 ## The free stack, and its limits
@@ -63,10 +63,10 @@ error until it resets; **it never turns into a bill.**
 
 ## Step 1: Supabase (database + file storage)
 
-1. **Create an account** at supabase.com (signing in with GitHub is fine) and a **New project**. Pick a region close to you and **write down the database password** (you can't read it again). A password without special characters is easier: otherwise you must URL-encode them later (`&` → `%26`, `@` → `%40`, `/` → `%2F`, `:` → `%3A`).
-2. **Storage → New bucket:** name it `documents` and keep it **private** (public switched off).
+1. **Create an account** at supabase.com (signing in with GitHub is fine) and a **New project**. Pick a region close to you and **write down the database password** (you can't read it again). A password without special characters is easier: otherwise you must URL-encode them later (`&` â†’ `%26`, `@` â†’ `%40`, `/` â†’ `%2F`, `:` â†’ `%3A`).
+2. **Storage â†’ New bucket:** name it `documents` and keep it **private** (public switched off).
 3. Open the **Connect** button at the top of the project page. It has tabs; you need two:
-   - **Server tab**: copy **`SUPABASE_URL`** (like `https://abcdefgh.supabase.co`) and reveal-and-copy **`SUPABASE_SECRET_KEY`** (the `sb_secret_…` value: click the eye icon, then copy). The secret key bypasses all access rules, so it only ever goes into Vercel's environment settings and your own terminal. You don't need the `sb_publishable_…` key.
+   - **Server tab**: copy **`SUPABASE_URL`** (like `https://abcdefgh.supabase.co`) and reveal-and-copy **`SUPABASE_SECRET_KEY`** (the `sb_secret_â€¦` value: click the eye icon, then copy). The secret key bypasses all access rules, so it only ever goes into Vercel's environment settings and your own terminal. You don't need the `sb_publishable_â€¦` key.
    - **Direct tab** (connection strings): choose the **Session pooler** method, port **5432**. Not "Direct connection" (it only works over IPv6, which neither your PC nor Vercel uses) and not "Transaction pooler". The string looks like `postgresql://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres`. Replace the password placeholder with your password, then turn it into `DATABASE_URL` by changing the start to `postgresql+psycopg://` and adding `?sslmode=require` at the end.
 4. You don't need to create tables by hand: the app's migrations do it (step 3).
 
@@ -77,7 +77,7 @@ serverless function has none, so Cloudflare does it, with the **same bge-m3 mode
 
 1. Create a free account at cloudflare.com (email and password; no card).
 2. Find your **Account ID** (shown in the dashboard, for example in the right-hand column of the account home page).
-3. Create an **API token**: *My Profile → API Tokens → Create Token*, using the **Workers AI** template (or a custom token with the *Workers AI* permission). Copy it once.
+3. Create an **API token**: *My Profile â†’ API Tokens â†’ Create Token*, using the **Workers AI** template (or a custom token with the *Workers AI* permission). Copy it once.
 4. Your settings are:
    - `EMBEDDING_BASE_URL` = `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/ai/v1`
    - `EMBEDDING_API_KEY` = the token
@@ -88,7 +88,7 @@ The dashboard wording may differ slightly; the Account ID and a Workers AI token
 ## Step 3: check your settings and create the tables, from your own PC
 
 > **Tip on commands.** If your prompt starts with `(documind)`, the project's virtual environment is already
-> active, and `py -m uv run …` will fail with *No module named uv*. In that case leave out the `py -m uv run`
+> active, and `py -m uv run â€¦` will fail with *No module named uv*. In that case leave out the `py -m uv run`
 > prefix (`documind doctor`, `alembic upgrade head`), or type `deactivate` first.
 
 Set the values **in your own terminal** (never in chat), from the `backend` folder:
@@ -125,7 +125,7 @@ Close the terminal afterwards so the secrets don't linger in your session.
 ## Step 4: Vercel project 1, the backend
 
 1. Create an account at vercel.com with GitHub and choose the free **Hobby** plan. **Don't enter a card.**
-2. **Add New → Project** → import your repository.
+2. **Add New â†’ Project** â†’ import your repository.
 3. Set **Root Directory** to `backend`, and the project name to something like `documind-api`. Vercel detects FastAPI by itself. The files [backend/index.py](../backend/index.py) (the entry point), [backend/vercel.json](../backend/vercel.json) (Dublin region, 5-minute limit) and `.python-version` (3.13) are already prepared.
 4. Open **Environment Variables** and add (the same value applies to all environments):
 
@@ -134,7 +134,7 @@ Close the terminal afterwards so the secrets don't linger in your session.
    | `DATABASE_URL` | the Session pooler string from step 1 |
    | `STORAGE_BACKEND` | `supabase` |
    | `SUPABASE_URL` | the project URL |
-   | `SUPABASE_SECRET_KEY` | the `sb_secret_…` key |
+   | `SUPABASE_SECRET_KEY` | the `sb_secret_â€¦` key |
    | `SUPABASE_BUCKET` | `documents` |
    | `STORAGE_DIR` | `/tmp/documind` |
    | `MAX_UPLOAD_BYTES` | `4000000` |
@@ -154,10 +154,10 @@ Close the terminal afterwards so the secrets don't linger in your session.
    | `CREATOR_NAME` | the name the assistant gives when asked who created it (default `Saad`) |
 
    Optional: `LLM_LIGHT_MODEL` (small model for rewriting follow-ups and describing documents, default
-   `llama-3.1-8b-instant`), and the `DEMO_*` limits listed in [backend/.env.example](../backend/.env.example).
+   `openai/gpt-oss-20b`), and the `DEMO_*` limits listed in [backend/.env.example](../backend/.env.example).
 
    Leave `CORS_ORIGINS` for step 7.
-5. **Deploy.** When it finishes, open `https://<your-project>.vercel.app/health/ready`. Expected: `{"status":"ok","database":"up","embedder":"@cf/baai/bge-m3","max_upload_bytes":4000000}`. `/docs` shows the interactive API. If you see a Vercel *login page* instead, turn off **Vercel Authentication** for this project (Settings → Deployment Protection): an API called from a website can't log in.
+5. **Deploy.** When it finishes, open `https://<your-project>.vercel.app/health/ready`. Expected: `{"status":"ok","database":"up","embedder":"@cf/baai/bge-m3","max_upload_bytes":4000000}`. `/docs` shows the interactive API. If you see a Vercel *login page* instead, turn off **Vercel Authentication** for this project (Settings â†’ Deployment Protection): an API called from a website can't log in.
 
 ## Step 5: create your first user
 
@@ -168,19 +168,19 @@ There's no public sign-up: you create users with a command, against the producti
 py -m uv run documind create-user you@example.com
 ```
 
-Copy the `dm_…` key it prints (shown once). Close the terminal afterwards.
+Copy the `dm_â€¦` key it prints (shown once). Close the terminal afterwards.
 
 ## Step 6: Vercel project 2, the website
 
-1. **Add New → Project** → import the **same** repository again.
+1. **Add New â†’ Project** â†’ import the **same** repository again.
 2. Set **Root Directory** to `frontend` (project name for example `documind`). Vercel detects Vite; [frontend/vercel.json](../frontend/vercel.json) adds security headers.
 3. Add the environment variable `VITE_API_URL` = the backend's address from step 4 (like `https://documind-api.vercel.app`, no trailing slash). It's read when the site is *built*, so changing it later means redeploying.
 4. Deploy and copy the site's address (for example `https://documind.vercel.app`).
 
 ## Step 7: let the website talk to the backend
 
-In the **backend** project: *Settings → Environment Variables* → add `CORS_ORIGINS` = the website's address
-(no trailing slash; several can be comma-separated). Then **redeploy the backend** (*Deployments → ⋯ → Redeploy*):
+In the **backend** project: *Settings â†’ Environment Variables* â†’ add `CORS_ORIGINS` = the website's address
+(no trailing slash; several can be comma-separated). Then **redeploy the backend** (*Deployments â†’ â‹¯ â†’ Redeploy*):
 Vercel applies a changed variable only to new deployments. This rule is what lets *your* website, and no other,
 call your API from a browser.
 
@@ -188,7 +188,7 @@ call your API from a browser.
 
 [.github/workflows/keep-alive.yml](../.github/workflows/keep-alive.yml) calls your backend once a day. That
 touches the Supabase database, which should stop Supabase from pausing your project after a week without use. In
-GitHub: *Settings → Secrets and variables → Actions → Variables → New repository variable*: `API_URL` =
+GitHub: *Settings â†’ Secrets and variables â†’ Actions â†’ Variables â†’ New repository variable*: `API_URL` =
 `https://<your-backend>.vercel.app`. Test it from the **Actions** tab with *Run workflow*.
 
 ## Step 8b: the demo accounts (recruiters)
@@ -210,11 +210,11 @@ py -m uv run alembic upgrade head
 
 ## Step 9: smoke test
 
-- [ ] Open the website address and paste your `dm_…` key, or click **Try the demo** and check the access code and direct link work (log out, then open the link).
-- [ ] Settings shows your backend address, status "Opérationnelle" and the embedding model name.
-- [ ] The upload zone says "4 Mo max". Upload a small PDF: it goes straight to "Indexé", and a new file appears in Supabase → Storage → `documents`.
+- [ ] Open the website address and paste your `dm_â€¦` key, or click **Try the demo** and check the access code and direct link work (log out, then open the link).
+- [ ] Settings shows your backend address, status "OpÃ©rationnelle" and the embedding model name.
+- [ ] The upload zone says "4 Mo max". Upload a small PDF: it goes straight to "IndexÃ©", and a new file appears in Supabase â†’ Storage â†’ `documents`.
 - [ ] Ask a question the document answers: the answer has a citation, and clicking it opens the page with the quote highlighted.
-- [ ] Ask something the document doesn't cover: you get the amber "Je ne peux pas répondre" card.
+- [ ] Ask something the document doesn't cover: you get the amber "Je ne peux pas rÃ©pondre" card.
 - [ ] Delete the document: the file disappears from the bucket.
 
 ## When a free limit runs out
@@ -225,7 +225,7 @@ py -m uv run alembic upgrade head
 | Groq rate limit | Questions fail briefly with "rate limit" | Wait a minute |
 | Vercel monthly compute | Functions are blocked until the month resets | Wait; there is no charge |
 | Supabase 500 MB / 1 GB | Uploads fail | Delete old documents |
-| Supabase paused (about 7 days idle) | The app can't reach the database | Supabase dashboard → *Restore/Resume project*; the keep-alive job helps prevent it |
+| Supabase paused (about 7 days idle) | The app can't reach the database | Supabase dashboard â†’ *Restore/Resume project*; the keep-alive job helps prevent it |
 
 ## If a service asks for a card
 
@@ -240,23 +240,23 @@ the app on your own PC ([testing.md](testing.md)) and show it in an interview.
 | Symptom | Likely cause and fix |
 |---|---|
 | Browser console: *blocked by CORS policy* | `CORS_ORIGINS` doesn't exactly match the website's address (scheme, no trailing slash, no path), or you didn't redeploy the backend after setting it. |
-| The backend returns an HTML login page | Vercel Authentication is on for the backend project: Settings → Deployment Protection → turn it off. |
+| The backend returns an HTML login page | Vercel Authentication is on for the backend project: Settings â†’ Deployment Protection â†’ turn it off. |
 | Upload fails with *413* / `FUNCTION_PAYLOAD_TOO_LARGE` | The file is over about 4.5 MB (Vercel's limit). Use a smaller file or split the PDF. |
 | *504* / `FUNCTION_INVOCATION_TIMEOUT` | Indexing took more than 5 minutes (a very large document). Split it. |
 | First request after a pause takes a few seconds | Cold start. Normal. |
-| Build fails or `No module named …` | Check the project's **Root Directory** is `backend`, and look at the build log; the dependency list is [backend/pyproject.toml](../backend/pyproject.toml). |
+| Build fails or `No module named â€¦` | Check the project's **Root Directory** is `backend`, and look at the build log; the dependency list is [backend/pyproject.toml](../backend/pyproject.toml). |
 | *Tenant or user not found* | Wrong pooler user: it must be `postgres.<project-ref>`, not plain `postgres`. |
 | *connection timed out* to the database | You used the **Direct** connection (IPv6). Switch to the Session pooler string. |
 | *password authentication failed* | Wrong password, or special characters not URL-encoded in `DATABASE_URL`. |
-| Upload fails with `storage_error` | Bucket name or key wrong, or the bucket doesn't exist. `documind doctor` shows the HTTP status. (`sb_secret_…` keys were verified against a live project.) |
-| Document ends in `embedding_error` | Wrong Cloudflare token or Account ID in the URL, or the vectors aren't 1024-dimensional (the message says which). Verified against a live account: the OpenAI-compatible endpoint (`…/ai/v1`) returns standard 1024-dimensional bge-m3 vectors. |
+| Upload fails with `storage_error` | Bucket name or key wrong, or the bucket doesn't exist. `documind doctor` shows the HTTP status. (`sb_secret_â€¦` keys were verified against a live project.) |
+| Document ends in `embedding_error` | Wrong Cloudflare token or Account ID in the URL, or the vectors aren't 1024-dimensional (the message says which). Verified against a live account: the OpenAI-compatible endpoint (`â€¦/ai/v1`) returns standard 1024-dimensional bge-m3 vectors. |
 | `embedding_unavailable` | The daily allowance is used up, or a rate limit: wait. |
 | Many *"too many connections"*-style database errors | Keep `DB_POOL_SIZE` and `DB_MAX_OVERFLOW` small (2 and 2): every function instance holds its own pool. |
 
 ## Security checklist for a public deployment
 
 - **The secret key and database password exist only in Vercel's environment settings (and your own terminal).** If either leaks, rotate it in Supabase.
-- **No public sign-up;** whoever holds a `dm_…` key can use your free Groq and Cloudflare quota. Share keys carefully. There's no rate limiting yet (Phase 6 on the project plan). If a key leaks, replace it from your PC (set `DATABASE_URL` as in step 3): `documind list-keys` shows key prefixes and their status, `documind create-key you@example.com` issues a new key (shown once), and `documind revoke-key dm_Abc12` revokes the key starting with that prefix. A revoked key stops working at once.
+- **No public sign-up;** whoever holds a `dm_â€¦` key can use your free Groq and Cloudflare quota. Share keys carefully. There's no rate limiting yet (Phase 6 on the project plan). If a key leaks, replace it from your PC (set `DATABASE_URL` as in step 3): `documind list-keys` shows key prefixes and their status, `documind create-key you@example.com` issues a new key (shown once), and `documind revoke-key dm_Abc12` revokes the key starting with that prefix. A revoked key stops working at once.
 - API keys live in the browser's `localStorage`: fine for a personal or demo deployment, not for a multi-user product. Proper login (for example Supabase Auth) would replace it.
 - Uploaded documents and questions are sent to Cloudflare and Groq. Don't put confidential documents through them unless their terms suit you.
 
@@ -264,7 +264,7 @@ the app on your own PC ([testing.md](testing.md)) and show it in an interview.
 
 - **A different embedding model or provider:** change `EMBEDDING_*`, redeploy, then **reindex** every document. The new model must output **1024** dimensions, because the column is `vector(1024)`. Vectors from different models can't be compared; every chunk records the model that made it, and search only looks at chunks from the current model.
 - **New database migrations:** run `alembic upgrade head` from your PC with the production `DATABASE_URL`, as in step 3.
-- **Rolling back:** Vercel keeps previous deployments (Deployments → ⋯ → Promote to Production).
+- **Rolling back:** Vercel keeps previous deployments (Deployments â†’ â‹¯ â†’ Promote to Production).
 
 ## Appendix: the same backend on Render (optional)
 
@@ -273,5 +273,5 @@ service), [render.yaml](../render.yaml) and [backend/Dockerfile](../backend/Dock
 service that runs the API with a background worker thread instead of inline indexing and allows larger uploads
 (set `RUN_WORKER_IN_API=true`, leave `INLINE_JOBS` off). A free Render service [sleeps after 15 minutes without
 requests and wipes its disk on restart](https://render.com/docs/free). The steps are the same as above, with
-Render's *New → Blueprint* instead of Vercel project 1. This path is not needed for the project and isn't covered
+Render's *New â†’ Blueprint* instead of Vercel project 1. This path is not needed for the project and isn't covered
 in the smoke test.

@@ -1,6 +1,6 @@
-"""Composition root: the only place that turns config into concrete classes.
+﻿"""Composition root: the only place that turns config into concrete classes.
 
-Every other module depends on interfaces (Embedder, LLMProvider, Retriever, …).
+Every other module depends on interfaces (Embedder, LLMProvider, Retriever, â€¦).
 Tests build a container with fakes by passing `embedder=` / `llm=`.
 """
 
@@ -130,7 +130,8 @@ def build_light_llm(settings: Settings) -> LLMProvider:
         base_url=settings.llm_base_url,
         api_key=settings.groq_api_key.get_secret_value(),
         model=settings.llm_light_model,
-        structured_mode="json_object",  # llama models on Groq: valid JSON, schema checked by us
+        structured_mode="json_schema",
+        reasoning_effort="low",
         temperature=0.0,
         max_output_tokens=700,
         timeout_s=min(settings.llm_timeout_s, 25.0),

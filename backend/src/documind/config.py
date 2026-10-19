@@ -1,4 +1,4 @@
-"""Single source of configuration, read from environment variables / backend/.env."""
+﻿"""Single source of configuration, read from environment variables / backend/.env."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     max_pages: int = 1000
     supabase_url: str = ""  # https://<project-ref>.supabase.co
     # Server-side secret: bypasses Storage access rules, never goes to the browser. The dashboard calls
-    # it SUPABASE_SECRET_KEY (new `sb_secret_…` keys); the older name SUPABASE_SERVICE_KEY still works.
+    # it SUPABASE_SECRET_KEY (new `sb_secret_â€¦` keys); the older name SUPABASE_SERVICE_KEY still works.
     supabase_secret_key: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_KEY")
     )
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=3, ge=1, le=5)
     # A small, fast model for light jobs (rewriting follow-up questions, describing documents). It has its
     # own rate-limit bucket on Groq, which stretches the free allowance. Used in JSON-object mode.
-    llm_light_model: str = "llama-3.1-8b-instant"
+    llm_light_model: str = "openai/gpt-oss-20b"
 
     # Who the assistant says it is (shown when a user asks "who are you / who made you?").
     app_name: str = "DocuMind AI"
