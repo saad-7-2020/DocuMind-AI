@@ -1,6 +1,9 @@
 """Command line entry point: `uv run documind <command>`.
 
   create-user EMAIL   create a user and print a new API key (shown once)
+  create-key EMAIL    issue an additional API key for an existing user (shown once)
+  list-keys [EMAIL]   list keys (prefix only, never the key itself) and whether they are revoked
+  revoke-key PREFIX   revoke the active key that starts with PREFIX (e.g. dm_Rewg2)
   worker              run the ingestion worker until Ctrl+C
   api                 run the HTTP API (uvicorn)
   doctor              check that the database, storage, embeddings and LLM settings work
@@ -27,6 +30,55 @@ def _create_user(email: str) -> None:
     print(f"user_id: {user.id}")
     print(f"api_key: {key}")
     print("Store this key now; it cannot be shown again.")
+
+
+def _with_session(action):
+    from documind.db.session import make_engine, make_session_factory, transaction
+
+    settings = get_settings()
+    engine = make_engine(settings.database_url, 1, 0)
+    try:
+        with transaction(make_session_factory(engine)) as s:
+            return action(s)
+    finally:
+        engine.dispose()
+
+
+def _create_key(email: str) -> int:
+    from documind.auth import create_key
+
+    try:
+        key = _with_session(lambda s: create_key(s, email))
+    except LookupError as e:
+        print(e)
+        return 1
+    print(f"api_key: {key}")
+    print("Store this key now; it cannot be shown again.")
+    return 0
+
+
+def _list_keys(email: str | None) -> int:
+    from documind.auth import list_keys
+
+    rows = _with_session(lambda s: list_keys(s, email))
+    if not rows:
+        print("No keys.")
+    for prefix, owner, created, revoked in rows:
+        status = f"REVOKED {revoked:%Y-%m-%d}" if revoked else "active"
+        print(f"{prefix}  {owner:<30}  created {created:%Y-%m-%d %H:%M}  {status}")
+    return 0
+
+
+def _revoke_key(prefix: str) -> int:
+    from documind.auth import revoke_key
+
+    try:
+        n = _with_session(lambda s: revoke_key(s, prefix))
+    except ValueError as e:
+        print(e)
+        return 1
+    print(f"Revoked {n} key(s)." if n else f"No active key starts with {prefix!r}.")
+    return 0 if n else 1
 
 
 def _worker() -> None:
@@ -78,6 +130,12 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     p_user = sub.add_parser("create-user", help="create a user and print an API key")
     p_user.add_argument("email")
+    p_ck = sub.add_parser("create-key", help="issue an additional API key for an existing user")
+    p_ck.add_argument("email")
+    p_lk = sub.add_parser("list-keys", help="list API keys (prefix only)")
+    p_lk.add_argument("email", nargs="?")
+    p_rk = sub.add_parser("revoke-key", help="revoke the active API key with this prefix")
+    p_rk.add_argument("prefix")
     sub.add_parser("worker", help="run the ingestion worker")
     p_api = sub.add_parser("api", help="run the HTTP API")
     p_api.add_argument("--host", default="127.0.0.1")
@@ -91,6 +149,12 @@ def main() -> None:
     configure_logging(get_settings().log_level)
     if args.command == "create-user":
         _create_user(args.email)
+    elif args.command == "create-key":
+        raise SystemExit(_create_key(args.email))
+    elif args.command == "list-keys":
+        raise SystemExit(_list_keys(args.email))
+    elif args.command == "revoke-key":
+        raise SystemExit(_revoke_key(args.prefix))
     elif args.command == "worker":
         _worker()
     elif args.command == "api":

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,3 +41,35 @@ def user_for_key(session: Session, key: str) -> User | None:
         select(User).join(ApiKey, ApiKey.user_id == User.id)
         .where(ApiKey.key_hash == hash_api_key(key), ApiKey.revoked_at.is_(None))
     )
+
+
+# ── Key management (used by the CLI) ─────────────────────
+
+def create_key(session: Session, email: str) -> str:
+    """Issue an additional key for an existing user. The plaintext key is returned once."""
+    user = session.scalar(select(User).where(User.email == email.strip().lower()))
+    if user is None:
+        raise LookupError(f"No user with email {email!r}.")
+    key = generate_api_key()
+    session.add(ApiKey(user_id=user.id, key_prefix=key[:8], key_hash=hash_api_key(key)))
+    return key
+
+
+def list_keys(session: Session, email: str | None = None) -> list[tuple[str, str, datetime, datetime | None]]:
+    """(prefix, user email, created_at, revoked_at): only the prefix is ever shown, never the key."""
+    stmt = select(ApiKey.key_prefix, User.email, ApiKey.created_at, ApiKey.revoked_at).join(
+        User, User.id == ApiKey.user_id
+    )
+    if email:
+        stmt = stmt.where(User.email == email.strip().lower())
+    return [tuple(row) for row in session.execute(stmt.order_by(ApiKey.created_at))]  # type: ignore[misc]
+
+
+def revoke_key(session: Session, prefix: str) -> int:
+    """Revoke the active key that starts with this prefix. Refuses if the prefix is ambiguous."""
+    keys = list(session.scalars(select(ApiKey).where(ApiKey.key_prefix == prefix, ApiKey.revoked_at.is_(None))))
+    if len(keys) > 1:
+        raise ValueError(f"Prefix {prefix!r} matches {len(keys)} active keys; refusing to guess.")
+    for k in keys:
+        k.revoked_at = datetime.now(UTC)
+    return len(keys)

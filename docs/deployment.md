@@ -233,7 +233,7 @@ the app on your own PC ([testing.md](testing.md)) and show it in an interview.
 ## Security checklist for a public deployment
 
 - **The secret key and database password exist only in Vercel's environment settings (and your own terminal).** If either leaks, rotate it in Supabase.
-- **No public sign-up;** whoever holds a `dm_…` key can use your free Groq and Cloudflare quota. Share keys carefully. There's no rate limiting yet (Phase 6 on the project plan).
+- **No public sign-up;** whoever holds a `dm_…` key can use your free Groq and Cloudflare quota. Share keys carefully. There's no rate limiting yet (Phase 6 on the project plan). If a key leaks, replace it from your PC (set `DATABASE_URL` as in step 3): `documind list-keys` shows key prefixes and their status, `documind create-key you@example.com` issues a new key (shown once), and `documind revoke-key dm_Abc12` revokes the key starting with that prefix. A revoked key stops working at once.
 - API keys live in the browser's `localStorage`: fine for a personal or demo deployment, not for a multi-user product. Proper login (for example Supabase Auth) would replace it.
 - Uploaded documents and questions are sent to Cloudflare and Groq. Don't put confidential documents through them unless their terms suit you.
 
