@@ -22,6 +22,7 @@ from documind.embedding.base import Embedder
 from documind.generation.answer import AnswerService
 from documind.generation.llm.base import LLMProvider
 from documind.generation.prompts import Identity
+from documind.indexing.describe import DocumentDescriber
 from documind.indexing.service import IndexingService
 from documind.ingestion.extractors import PdfExtractor, TxtExtractor
 from documind.ingestion.jobs import JobQueue
@@ -164,7 +165,8 @@ def build_container(
         tokenizer_id=embedder.tokenizer_id,
     )
     indexing = IndexingService(
-        sf, blobs, [PdfExtractor(settings.max_pages), TxtExtractor()], chunker, embedder, queue
+        sf, blobs, [PdfExtractor(settings.max_pages), TxtExtractor()], chunker, embedder, queue,
+        DocumentDescriber(light_llm, sf),
     )
     identity = Identity(settings.app_name, settings.creator_name, settings.creator_url)
     answers = AnswerService(llm, settings.context_max_chunks, settings.context_max_tokens, identity)

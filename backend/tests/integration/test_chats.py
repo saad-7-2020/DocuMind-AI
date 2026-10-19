@@ -100,6 +100,8 @@ def test_follow_up_questions_are_rewritten_using_the_history(chat_env, contract_
     seen = []
 
     def light(messages):
+        if "Texte du document" in messages[-1]["content"]:  # the document description, not a rewrite
+            return json.dumps({"summary": "", "keywords": [], "suggested_questions": []})
         seen.append(messages[-1]["content"])
         return json.dumps({"standalone_question": "Quel est le prix annuel de la maintenance ?"})
 

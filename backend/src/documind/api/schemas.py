@@ -23,6 +23,9 @@ class DocumentSummary(BaseModel):
     status: str
     page_count: int | None
     created_at: datetime
+    summary: str | None = None
+    keywords: list[str] = []
+    suggested_questions: list[str] = []
 
 
 class DocumentDetail(DocumentSummary):

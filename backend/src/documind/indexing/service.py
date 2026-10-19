@@ -15,6 +15,7 @@ from documind.db.tables import Chunk, Document, DocumentPage
 from documind.domain.errors import NoTextFound
 from documind.domain.models import DocumentStatus, PageText
 from documind.embedding.base import Embedder
+from documind.indexing.describe import DocumentDescriber
 from documind.ingestion.cleaning import clean_pages
 from documind.ingestion.extractors import Extractor, extractor_for
 from documind.ingestion.jobs import ClaimedJob, JobQueue
@@ -34,6 +35,7 @@ class IndexingService:
         chunker: RecursiveChunker,
         embedder: Embedder,
         queue: JobQueue,
+        describer: DocumentDescriber | None = None,
     ) -> None:
         self.sf = session_factory
         self.blobs = blob_store
@@ -41,6 +43,7 @@ class IndexingService:
         self.chunker = chunker
         self.embedder = embedder
         self.queue = queue
+        self.describer = describer
 
     # ── ingest / reindex ─────────────────────────────────
     def ingest(self, job: ClaimedJob) -> None:
@@ -69,6 +72,10 @@ class IndexingService:
 
         self.queue.set_stage(job.id, "storing", 0.95)
         self._store(job, pages, drafts, vectors)
+
+        if self.describer is not None:  # best effort: a missing description never fails the upload
+            self.queue.set_stage(job.id, "describing", 0.98)
+            self.describer.describe(job.document_id)
 
     def _embed(self, texts: list[str], job: ClaimedJob) -> np.ndarray:
         parts = []

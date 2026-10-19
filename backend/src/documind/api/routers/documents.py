@@ -160,6 +160,19 @@ def get_page(document_id: uuid.UUID, page_number: int, container: ContainerDep, 
         return PageOut(page_number=page.page_number, text=page.text, extraction_method=page.extraction_method)
 
 
+@router.post("/{document_id}/describe", response_model=DocumentSummary)
+def describe_document(document_id: uuid.UUID, container: ContainerDep, user: UserDep) -> DocumentSummary:
+    """Write the summary, keywords and suggested questions again (e.g. if the first attempt failed)."""
+    with container.sf() as s:
+        doc = _owned_document(s, user.id, document_id)
+        if doc.status != DocumentStatus.READY:
+            raise Conflict("Document is not ready yet.")
+    container.accounts.check_can_ask(user)  # counts like a question: it spends the same AI allowance
+    container.indexing.describer.describe(document_id)
+    with container.sf() as s:
+        return DocumentSummary.model_validate(_owned_document(s, user.id, document_id), from_attributes=True)
+
+
 @router.delete("/{document_id}", status_code=202, response_model=JobAccepted)
 def delete_document(document_id: uuid.UUID, container: ContainerDep, user: UserDep) -> JobAccepted:
     with transaction(container.sf) as s:
