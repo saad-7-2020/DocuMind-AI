@@ -120,10 +120,59 @@ class Diagnostics(BaseModel):
 class QueryResponse(BaseModel):
     query_id: UUID
     answer: str | None
+    answer_type: str = "document"  # document | assistant | smalltalk | insufficient
     abstained: bool
     abstention_reason: str | None
+    abstention_message: str | None = None  # the assistant's own friendly explanation, if it gave one
+    standalone_question: str | None = None  # set when a follow-up was rewritten before searching
     citations: list[CitationOut]
     usage: Usage
     latency_ms: dict[str, int]
     model: ModelInfo
     diagnostics: Diagnostics | None = None
+
+
+# ── Chats ────────────────────────────────────────────────
+
+class ConversationCreate(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    document_ids: list[UUID] | None = Field(default=None, max_length=100)
+
+
+class ConversationUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    document_ids: list[UUID] | None = Field(default=None, max_length=100)
+    clear_scope: bool = False  # true = search all documents again
+
+
+class ConversationOut(BaseModel):
+    id: UUID
+    title: str
+    document_ids: list[UUID] | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessageOut(BaseModel):
+    id: UUID
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: datetime
+    response: QueryResponse | None = None  # assistant messages: citations, usage, timings, ...
+
+
+class ConversationDetail(BaseModel):
+    conversation: ConversationOut
+    messages: list[MessageOut]
+
+
+class MessageCreate(BaseModel):
+    question: str = Field(min_length=1)
+    top_k: int | None = Field(default=None, ge=1)
+    debug: bool = False
+
+
+class Exchange(BaseModel):
+    conversation: ConversationOut
+    user_message: MessageOut
+    assistant_message: MessageOut

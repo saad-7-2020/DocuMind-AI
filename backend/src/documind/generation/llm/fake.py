@@ -39,3 +39,30 @@ def echo_first_source(messages: list[Message]) -> str:
     quote = text.split(". ")[0][:200]
     return json.dumps({"answer": f"{quote} [{sid}]", "citations": [{"source_id": sid, "quote": quote}],
                        "insufficient_evidence": False, "reason": None})
+
+
+class EchoLightLLM:
+    """Stand-in for the small 'light' model: rewrites nothing, describes documents from their first words."""
+
+    def __init__(self) -> None:
+        self.model_id = "fake/light"
+        self.calls: list[tuple[str, list[Message]]] = []
+
+    def generate(self, messages: list[Message], schema_name: str, schema: dict) -> LLMResult:
+        self.calls.append((schema_name, messages))
+        user = messages[-1]["content"]
+        if schema_name == "standalone_question":
+            m = re.search(r"Dernière question : (.*)\Z", user, re.S)
+            content = json.dumps({"standalone_question": (m.group(1) if m else user).strip()})
+        elif schema_name == "document_description":
+            text = re.sub(r"\s+", " ", user.split("Texte du document :", 1)[-1]).strip()
+            words = text.split()
+            content = json.dumps({
+                "summary": " ".join(words[:30]) + ("…" if len(words) > 30 else ""),
+                "keywords": [w.strip(".,;:()").lower() for w in words if len(w) > 6][:5],
+                "suggested_questions": ["De quoi parle ce document ?", "Quels sont les points clés ?",
+                                        "Quelles dates ou montants sont mentionnés ?"],
+            })
+        else:
+            content = "{}"
+        return LLMResult(content=content, model=self.model_id, input_tokens=50, output_tokens=20, latency_ms=1)

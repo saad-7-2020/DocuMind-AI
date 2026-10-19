@@ -12,12 +12,15 @@ import structlog
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from documind.chat.rewrite import QuestionRewriter
+from documind.chat.service import ChatService
 from documind.chunking.chunker import ChunkerConfig, RecursiveChunker
 from documind.config import Settings
 from documind.db.session import make_engine, make_session_factory
 from documind.embedding.base import Embedder
 from documind.generation.answer import AnswerService
 from documind.generation.llm.base import LLMProvider
+from documind.generation.prompts import Identity
 from documind.indexing.service import IndexingService
 from documind.ingestion.extractors import PdfExtractor, TxtExtractor
 from documind.ingestion.jobs import JobQueue
@@ -37,9 +40,11 @@ class Container:
     blobs: BlobStore
     embedder: Embedder
     llm: LLMProvider
+    light_llm: LLMProvider
     queue: JobQueue
     indexing: IndexingService
     pipeline: QueryPipeline
+    chats: ChatService
     worker: Worker
 
     def close(self) -> None:
@@ -110,6 +115,26 @@ def build_llm(settings: Settings) -> LLMProvider:
     )
 
 
+def build_light_llm(settings: Settings) -> LLMProvider:
+    """The small, fast model for light jobs (rewriting follow-ups, describing documents)."""
+    if settings.llm_provider == "fake":
+        from documind.generation.llm.fake import EchoLightLLM
+
+        return EchoLightLLM()
+    from documind.generation.llm.openai_compat import OpenAICompatLLM
+
+    return OpenAICompatLLM(
+        base_url=settings.llm_base_url,
+        api_key=settings.groq_api_key.get_secret_value(),
+        model=settings.llm_light_model,
+        structured_mode="json_object",  # llama models on Groq: valid JSON, schema checked by us
+        temperature=0.0,
+        max_output_tokens=700,
+        timeout_s=min(settings.llm_timeout_s, 25.0),
+        max_retries=2,
+    )
+
+
 def build_blob_store(settings: Settings) -> BlobStore:
     if settings.storage_backend == "supabase":
         if not settings.supabase_url or not settings.supabase_secret_key.get_secret_value():
@@ -121,13 +146,15 @@ def build_blob_store(settings: Settings) -> BlobStore:
 
 
 def build_container(
-    settings: Settings, *, embedder: Embedder | None = None, llm: LLMProvider | None = None
+    settings: Settings, *, embedder: Embedder | None = None, llm: LLMProvider | None = None,
+    light_llm: LLMProvider | None = None,
 ) -> Container:
     engine = make_engine(settings.database_url, settings.db_pool_size, settings.db_max_overflow)
     sf = make_session_factory(engine)
     blobs = build_blob_store(settings)
     embedder = embedder or build_embedder(settings)
     llm = llm or build_llm(settings)
+    light_llm = light_llm or build_light_llm(settings)
     queue = JobQueue(sf)
     chunker = RecursiveChunker(
         ChunkerConfig(settings.chunk_max_tokens, settings.chunk_overlap_tokens),
@@ -137,7 +164,9 @@ def build_container(
     indexing = IndexingService(
         sf, blobs, [PdfExtractor(settings.max_pages), TxtExtractor()], chunker, embedder, queue
     )
-    answers = AnswerService(llm, settings.context_max_chunks, settings.context_max_tokens)
+    identity = Identity(settings.app_name, settings.creator_name, settings.creator_url)
+    answers = AnswerService(llm, settings.context_max_chunks, settings.context_max_tokens, identity)
     pipeline = QueryPipeline(DenseRetriever(sf, embedder), answers, embedder.model_id)
+    chats = ChatService(sf, pipeline, QuestionRewriter(light_llm), settings)
     worker = Worker(queue, indexing, settings.job_timeout_s, settings.worker_poll_interval_s)
-    return Container(settings, engine, sf, blobs, embedder, llm, queue, indexing, pipeline, worker)
+    return Container(settings, engine, sf, blobs, embedder, llm, light_llm, queue, indexing, pipeline, chats, worker)

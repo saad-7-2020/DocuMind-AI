@@ -18,7 +18,7 @@ def by_name(checks):
 def test_all_checks_pass_with_a_healthy_setup(container):
     checks = by_name(run_doctor(container, container.settings))
     assert [c.ok for c in checks.values()] == [True] * 4, {n: c.detail for n, c in checks.items()}
-    assert "pgvector" in checks["Database"].detail and "migrations at 0002" in checks["Database"].detail
+    assert "pgvector" in checks["Database"].detail and "migrations at 0003" in checks["Database"].detail
     assert "1024-d vectors" in checks["Embeddings"].detail
     assert "upload, download and delete all work" in checks["Storage"].detail
 

@@ -31,11 +31,12 @@ class QueryPipeline:
         self.answers = answers
         self.embedder_id = embedder_id
 
-    def run(self, question: str, filters: SearchFilters, top_k: int) -> QueryResult:
+    def run(self, question: str, filters: SearchFilters, top_k: int,
+            history: list[dict[str, str]] | None = None) -> QueryResult:
         t0 = time.perf_counter()
         retrieved = self.retriever.retrieve(question, filters, top_k)
         t1 = time.perf_counter()
-        generated = self.answers.answer(question, retrieved)
+        generated = self.answers.answer(question, retrieved, history)
         t2 = time.perf_counter()
         return QueryResult(
             query_id=uuid.uuid4(),

@@ -70,6 +70,17 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 1500
     llm_timeout_s: float = 60.0
     llm_max_retries: int = Field(default=3, ge=1, le=5)
+    # A small, fast model for light jobs (rewriting follow-up questions, describing documents). It has its
+    # own rate-limit bucket on Groq, which stretches the free allowance. Used in JSON-object mode.
+    llm_light_model: str = "llama-3.1-8b-instant"
+
+    # Who the assistant says it is (shown when a user asks "who are you / who made you?").
+    app_name: str = "DocuMind AI"
+    creator_name: str = "Saad"
+    creator_url: str = ""
+
+    # Chats
+    chat_history_messages: int = Field(default=6, ge=0, le=20)  # recent messages used to understand follow-ups
 
     # Question limits
     max_question_chars: int = 2000

@@ -1,14 +1,19 @@
-"""Grounded answer generation (§5.6–5.8, Phase 2 subset).
+"""Grounded answer generation (§5.6–5.8).
 
-Phase 2 does: structured JSON output, one repair retry, mapping S# → chunk/page,
-dropping citations to sources that weren't in the context, and abstaining when the
-model reports insufficient evidence or nothing was retrieved.
-Phase 3 adds quote verification, the score-threshold gate and the citation gate.
+The model returns structured JSON with an `answer_type`:
+- "document": built only from the retrieved sources; every claim needs a verifiable citation, and an
+  answer that ends up with no valid citation is turned into an abstention (the citation gate).
+- "assistant" / "smalltalk": about the assistant itself or politeness: no sources needed.
+- "insufficient": the sources can't answer: abstain, with a friendly explanation.
+
+We also map S# → chunk/page, drop citations to sources that weren't in the context, and retry once
+when the JSON is invalid. Phase 3 adds quote verification and the score-threshold gate.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ValidationError
@@ -19,10 +24,16 @@ from documind.generation.context import Source, render_sources, select_sources
 from documind.generation.llm.base import LLMProvider, LLMResult, Message
 from documind.generation.prompts import (
     ANSWER_SCHEMA,
+    HISTORY_HEADER_FR,
+    NO_SOURCES_FR,
     REPAIR_TEMPLATE_FR,
-    SYSTEM_PROMPT_FR,
     USER_TEMPLATE_FR,
+    Identity,
+    build_system_prompt,
 )
+
+AnswerType = Literal["document", "assistant", "smalltalk", "insufficient"]
+HISTORY_TURN_CHARS = 600
 
 
 class LLMCitation(BaseModel):
@@ -31,10 +42,11 @@ class LLMCitation(BaseModel):
 
 
 class LLMAnswer(BaseModel):
-    answer: str | None
-    citations: list[LLMCitation]
-    insufficient_evidence: bool
-    reason: str | None
+    answer_type: AnswerType = "document"
+    answer: str | None = None
+    citations: list[LLMCitation] = []
+    insufficient_evidence: bool = False
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +68,8 @@ class GeneratedAnswer:
     abstention_reason: str | None
     citations: list[Citation]
     sources: list[Source]
+    answer_type: str = "document"
+    abstention_message: str | None = None  # the model's own friendly explanation, when it gave one
     citations_dropped: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -66,25 +80,35 @@ class GeneratedAnswer:
 
 
 class AnswerService:
-    def __init__(self, llm: LLMProvider, context_max_chunks: int, context_max_tokens: int) -> None:
+    def __init__(self, llm: LLMProvider, context_max_chunks: int, context_max_tokens: int,
+                 identity: Identity | None = None) -> None:
         self.llm = llm
         self.max_chunks = context_max_chunks
         self.max_tokens = context_max_tokens
+        self.system_prompt = build_system_prompt(identity or Identity())
 
-    def answer(self, question: str, chunks: list[RetrievedChunk]) -> GeneratedAnswer:
+    def answer(self, question: str, chunks: list[RetrievedChunk],
+               history: list[dict[str, str]] | None = None) -> GeneratedAnswer:
         sources = select_sources(chunks, self.max_chunks, self.max_tokens)
-        if not sources:
-            return GeneratedAnswer(None, True, "no_relevant_evidence", [], [])
-
         messages: list[Message] = [
-            {"role": "system", "content": SYSTEM_PROMPT_FR},
-            {"role": "user", "content": USER_TEMPLATE_FR.format(sources=render_sources(sources), question=question)},
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": USER_TEMPLATE_FR.format(
+                sources=render_sources(sources) if sources else NO_SOURCES_FR,
+                history=_render_history(history), question=question)},
         ]
         out = GeneratedAnswer(None, False, None, [], sources)
         parsed = self._generate_validated(messages, out)
+        out.answer_type = parsed.answer_type
 
-        if parsed.insufficient_evidence:
-            out.abstained, out.abstention_reason = True, "model_insufficient_evidence"
+        if parsed.answer_type == "insufficient" or parsed.insufficient_evidence:
+            out.answer_type = "insufficient"
+            out.abstained = True
+            out.abstention_reason = "model_insufficient_evidence" if sources else "no_relevant_evidence"
+            out.abstention_message = parsed.reason
+            return out
+
+        if parsed.answer_type in ("assistant", "smalltalk"):
+            out.answer = parsed.answer  # about the assistant itself: nothing to cite
             return out
 
         by_id = {s.source_id: s for s in sources}
@@ -98,6 +122,11 @@ class AnswerService:
                 marker=src.source_id, chunk_id=ch.chunk_id, document_id=ch.document_id, filename=ch.filename,
                 page_start=ch.page_start, page_end=ch.page_end, quote=c.quote, score=ch.score,
             ))
+        if not out.citations:  # citation gate: a document answer nobody can verify is not an answer
+            out.abstained = True
+            out.abstention_reason = "no_valid_citations" if sources else "no_relevant_evidence"
+            out.abstention_message = parsed.reason
+            return out
         out.answer = parsed.answer
         return out
 
@@ -125,6 +154,16 @@ class AnswerService:
         out.output_tokens += result.output_tokens or 0
         out.llm_latency_ms += result.latency_ms
         return result
+
+
+def _render_history(history: list[dict[str, str]] | None) -> str:
+    if not history:
+        return ""
+    turns = "\n".join(
+        f"{'Utilisateur' if m['role'] == 'user' else 'Assistant'} : {m['content'][:HISTORY_TURN_CHARS]}"
+        for m in history
+    )
+    return HISTORY_HEADER_FR.format(turns=turns)
 
 
 def _short_error(e: ValidationError) -> str:

@@ -15,7 +15,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from documind.api.errors import install_error_handlers
-from documind.api.routers import documents, health, jobs, query
+from documind.api.routers import chats, documents, health, jobs, query
 from documind.config import get_settings
 from documind.container import Container, build_container
 from documind.observability.logging import configure_logging
@@ -61,7 +61,7 @@ def create_app(container: Container) -> FastAPI:
         return response
 
     install_error_handlers(app)
-    for r in (health.router, documents.router, jobs.router, query.router):
+    for r in (health.router, documents.router, jobs.router, query.router, chats.router):
         app.include_router(r)
 
     @app.get("/", include_in_schema=False)

@@ -24,6 +24,9 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    kind: Mapped[str] = mapped_column(Text, default="owner")  # 'owner' (no limits) or 'demo' (self-service)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_ip_hash: Mapped[str | None] = mapped_column(Text)
 
 
 class ApiKey(Base):
@@ -52,6 +55,9 @@ class Document(Base):
     language: Mapped[str] = mapped_column(Text, default="fr")
     title: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    summary: Mapped[str | None] = mapped_column(Text)
+    keywords: Mapped[list] = mapped_column(JSONB, default=list)
+    suggested_questions: Mapped[list] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -109,3 +115,31 @@ class Job(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(Text, default="")
+    document_ids: Mapped[list | None] = mapped_column(JSONB)  # search scope; None = all documents
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"))
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(Text)  # 'user' | 'assistant'
+    content: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuthFailure(Base):
+    __tablename__ = "auth_failures"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ip_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

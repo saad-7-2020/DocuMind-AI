@@ -49,10 +49,63 @@ def test_model_reported_insufficient_evidence_abstains():
     assert out.abstained and out.abstention_reason == "model_insufficient_evidence" and out.answer is None
 
 
-def test_no_chunks_abstains_without_calling_the_llm():
-    llm = ScriptedLLM([reply("x", [])])
+def test_no_chunks_still_asks_the_model_so_it_can_answer_about_itself_or_abstain_politely():
+    abstain = reply(None, [], insufficient=True, reason="Je ne trouve rien. Importez un document.")
+    llm = ScriptedLLM([abstain.replace('"answer": null', '"answer_type": "insufficient", "answer": null')])
     out = AnswerService(llm, 6, 3000).answer("q", [])
-    assert out.abstained and out.abstention_reason == "no_relevant_evidence" and llm.calls == []
+    assert out.abstained and out.abstention_reason == "no_relevant_evidence" and len(llm.calls) == 1
+    assert out.abstention_message == "Je ne trouve rien. Importez un document."
+    assert "(aucune source disponible)" in llm.calls[0][-1]["content"]
+
+
+def typed(answer_type, answer, citations=(), insufficient=False, reason=None) -> str:
+    return json.dumps({"answer_type": answer_type, "answer": answer, "citations": list(citations),
+                       "insufficient_evidence": insufficient, "reason": reason})
+
+
+def test_assistant_questions_are_answered_without_sources_or_citations():
+    llm = ScriptedLLM([typed("assistant", "Je suis DocuMind AI, créé par Saad pour interroger vos documents.")])
+    out = AnswerService(llm, 6, 3000).answer("Qui es-tu ?", [])
+    assert not out.abstained and out.answer_type == "assistant" and out.citations == []
+    assert "DocuMind AI" in out.answer
+
+
+def test_smalltalk_is_answered_politely():
+    llm = ScriptedLLM([typed("smalltalk", "Bonjour ! Comment puis-je vous aider ?")])
+    out = AnswerService(llm, 6, 3000).answer("Bonjour", CHUNKS)
+    assert not out.abstained and out.answer_type == "smalltalk"
+
+
+def test_a_document_answer_without_any_valid_citation_becomes_an_abstention():
+    llm = ScriptedLLM([typed("document", "Le prix est de 5 euros.", [{"source_id": "S9", "quote": "inventé"}])])
+    out = AnswerService(llm, 6, 3000).answer("Quel prix ?", CHUNKS)
+    assert out.abstained and out.abstention_reason == "no_valid_citations" and out.citations_dropped == 1
+    assert out.answer is None
+
+
+def test_insufficient_type_carries_the_models_friendly_explanation():
+    llm = ScriptedLLM([typed("insufficient", None, insufficient=True, reason="Ce n'est pas dans vos documents.")])
+    out = AnswerService(llm, 6, 3000).answer("Qui a gagné la Coupe du monde ?", CHUNKS)
+    assert out.abstained and out.abstention_reason == "model_insufficient_evidence"
+    assert out.abstention_message == "Ce n'est pas dans vos documents."
+
+
+def test_history_is_given_as_context_not_as_a_source():
+    llm = ScriptedLLM([typed("assistant", "Bien sûr, en une phrase : ...")])
+    history = [{"role": "user", "content": "Quel est le préavis ?"}, {"role": "assistant", "content": "30 jours [S1]."}]
+    AnswerService(llm, 6, 3000).answer("Plus court", CHUNKS, history)
+    prompt = llm.calls[0][-1]["content"]
+    assert "Historique récent" in prompt and "ce ne sont PAS des sources" in prompt and "30 jours" in prompt
+
+
+def test_the_identity_comes_from_configuration():
+    from documind.generation.prompts import Identity
+
+    llm = ScriptedLLM([typed("assistant", "ok")])
+    identity = Identity("DocuMind AI", "Ada Lovelace", "https://example.org")
+    AnswerService(llm, 6, 3000, identity).answer("Qui es-tu ?", [])
+    system = llm.calls[0][0]["content"]
+    assert "Ada Lovelace (https://example.org)" in system and "Au plus un emoji" in system
 
 
 def test_invalid_json_gets_one_repair_retry():
