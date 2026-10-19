@@ -42,6 +42,7 @@ def list_conversations(container: ContainerDep, user: UserDep) -> list[Conversat
 
 @router.post("", status_code=201, response_model=ConversationOut)
 def create_conversation(body: ConversationCreate, container: ContainerDep, user: UserDep) -> ConversationOut:
+    container.accounts.check_can_create_conversation(user)
     return _conv_out(container.chats.create(user.id, body.title, body.document_ids))
 
 
@@ -68,6 +69,7 @@ def delete_conversation(conversation_id: uuid.UUID, container: ContainerDep, use
 def send_message(conversation_id: uuid.UUID, body: MessageCreate, container: ContainerDep,
                  user: UserDep) -> Exchange:
     settings = container.settings
+    container.accounts.check_can_ask(user)
     question = body.question.strip()
     if not question:
         raise BadRequest("Question is empty.")

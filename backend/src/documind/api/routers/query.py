@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from documind.api.deps import ContainerDep, UserDep
 from documind.api.query_response import build_query_response
 from documind.api.schemas import QueryRequest, QueryResponse
-from documind.domain.errors import BadRequest
+from documind.domain.errors import BadRequest, Forbidden
 from documind.domain.models import SearchFilters
 
 router = APIRouter(prefix="/v1", tags=["query"])
@@ -13,6 +13,8 @@ router = APIRouter(prefix="/v1", tags=["query"])
 
 @router.post("/query", response_model=QueryResponse)
 def query(body: QueryRequest, container: ContainerDep, user: UserDep) -> QueryResponse:
+    if user.kind == "demo":
+        raise Forbidden("Demo accounts use chats.")
     settings = container.settings
     question = body.question.strip()
     if not question:

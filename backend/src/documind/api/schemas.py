@@ -176,3 +176,34 @@ class Exchange(BaseModel):
     conversation: ConversationOut
     user_message: MessageOut
     assistant_message: MessageOut
+
+
+# ── Accounts ─────────────────────────────────────────────
+
+class AccountLimits(BaseModel):
+    max_documents: int
+    max_total_bytes: int
+    max_questions_per_day: int
+    max_conversations: int
+
+
+class AccountUsage(BaseModel):
+    documents: int
+    total_bytes: int
+    questions_today: int
+    conversations: int
+
+
+class MeOut(BaseModel):
+    kind: Literal["owner", "demo"]
+    label: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    limits: AccountLimits | None = None
+    usage: AccountUsage
+
+
+class DemoCreated(BaseModel):
+    access_code: str
+    expires_in_days: int
+    limits: AccountLimits

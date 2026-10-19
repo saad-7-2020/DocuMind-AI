@@ -82,6 +82,25 @@ class Settings(BaseSettings):
     # Chats
     chat_history_messages: int = Field(default=6, ge=0, le=20)  # recent messages used to understand follow-ups
 
+    # Demo accounts: anyone can create one ("Try the demo"); each gets a long random access code.
+    # They are limited and expire, to protect the free storage and free AI allowances.
+    demo_enabled: bool = True
+    demo_max_documents: int = 5
+    demo_max_total_bytes: int = 12_000_000
+    demo_max_questions_per_day: int = 40
+    demo_max_conversations: int = 20
+    demo_ttl_days: int = 7  # a demo account with no activity for this long is deleted
+    demo_signups_per_ip_per_day: int = 3
+    demo_max_active_accounts: int = 300
+
+    # Throttling of wrong access codes (guessing): per hashed client address.
+    auth_max_failures: int = 10
+    auth_failure_window_minutes: int = 15
+    ip_hash_salt: SecretStr = SecretStr("")
+
+    # Secret for the scheduled cleanup endpoint (Vercel cron sends it as a bearer token). Empty = disabled.
+    cron_secret: SecretStr = SecretStr("")
+
     # Question limits
     max_question_chars: int = 2000
 

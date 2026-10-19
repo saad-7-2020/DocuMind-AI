@@ -66,6 +66,22 @@ class BadRequest(DocuMindError):
     code, status, title = "bad_request", 400, "Bad request"
 
 
+class Forbidden(DocuMindError):
+    code, status, title = "forbidden", 403, "Not allowed for this account"
+
+
+class QuotaExceeded(DocuMindError):
+    code, status, title = "quota_exceeded", 403, "Limit reached for this account"
+
+
+class TooManyAttempts(DocuMindError):
+    code, status, title = "too_many_attempts", 429, "Too many wrong access codes. Try again later."
+
+
+class DemoUnavailable(DocuMindError):
+    code, status, title = "demo_unavailable", 429, "Demo accounts are temporarily unavailable"
+
+
 class Conflict(DocuMindError):
     code, status, title = "conflict", 409, "Conflict"
 

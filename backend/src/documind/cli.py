@@ -4,6 +4,7 @@
   create-key EMAIL    issue an additional API key for an existing user (shown once)
   list-keys [EMAIL]   list keys (prefix only, never the key itself) and whether they are revoked
   revoke-key PREFIX   revoke the active key that starts with PREFIX (e.g. dm_Rewg2)
+  purge-demo          delete demo accounts that have been idle past their expiry
   worker              run the ingestion worker until Ctrl+C
   api                 run the HTTP API (uvicorn)
   doctor              check that the database, storage, embeddings and LLM settings work
@@ -81,6 +82,17 @@ def _revoke_key(prefix: str) -> int:
     return 0 if n else 1
 
 
+def _purge_demo() -> int:
+    from documind.container import build_container
+
+    container = build_container(get_settings())
+    try:
+        print(f"Purged {container.accounts.purge_expired(limit=500)} expired demo account(s).")
+    finally:
+        container.close()
+    return 0
+
+
 def _worker() -> None:
     from documind.container import build_container
 
@@ -136,6 +148,7 @@ def main() -> None:
     p_lk.add_argument("email", nargs="?")
     p_rk = sub.add_parser("revoke-key", help="revoke the active API key with this prefix")
     p_rk.add_argument("prefix")
+    sub.add_parser("purge-demo", help="delete expired demo accounts")
     sub.add_parser("worker", help="run the ingestion worker")
     p_api = sub.add_parser("api", help="run the HTTP API")
     p_api.add_argument("--host", default="127.0.0.1")
@@ -155,6 +168,8 @@ def main() -> None:
         raise SystemExit(_list_keys(args.email))
     elif args.command == "revoke-key":
         raise SystemExit(_revoke_key(args.prefix))
+    elif args.command == "purge-demo":
+        raise SystemExit(_purge_demo())
     elif args.command == "worker":
         _worker()
     elif args.command == "api":

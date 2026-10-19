@@ -62,6 +62,7 @@ def upload_document(
     title: Annotated[str | None, Form(max_length=300)] = None,
 ) -> UploadAccepted:
     settings = container.settings
+    container.accounts.check_can_upload(user, 0)  # fail fast, before reading the body
     # Cheap early rejection. The real limit is enforced while streaming (spool_upload).
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > settings.max_upload_bytes + MULTIPART_OVERHEAD:
@@ -71,6 +72,7 @@ def upload_document(
     tmp_dir.mkdir(parents=True, exist_ok=True)
     spooled = spool_upload(file.file, settings.max_upload_bytes, tmp_dir)
     try:
+        container.accounts.check_can_upload(user, spooled.size_bytes)
         try:
             with transaction(container.sf) as s:
                 existing = s.scalar(
