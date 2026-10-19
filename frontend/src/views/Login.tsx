@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, describeError, type DemoCreated } from "../api";
 import { CopyButton } from "../components/CopyButton";
-import { IconKey, IconLogo, IconSparkles } from "../components/Icons";
+import { IconCheck, IconKey, IconLogo, IconSparkles } from "../components/Icons";
 import { LangSwitch } from "../components/LangSwitch";
 import { useI18n } from "../i18n";
 
@@ -50,6 +50,20 @@ export function Login({ onKey, initialError }: { onKey: (code: string) => void; 
   return (
     <div className="center-screen">
       <div className="login-lang"><LangSwitch /></div>
+      <div className="login-shell">
+      <section className="hero rise" aria-hidden={created ? "true" : undefined}>
+        <div className="hero-brand"><div className="brand-mark"><IconLogo size={20} color="#fff" /></div> DocuMind AI</div>
+        <h2>{t("login.hero_title")}</h2>
+        <p>{t("login.hero_text")}</p>
+        <ul className="hero-points">
+          {(["f1", "f2", "f3"] as const).map((f) => (
+            <li key={f}>
+              <span className="hero-tick"><IconCheck size={14} /></span>
+              <div><strong>{t(`login.${f}_t` as never)}</strong><span>{t(`login.${f}_d` as never)}</span></div>
+            </li>
+          ))}
+        </ul>
+      </section>
       <div className="card onboard rise">
         <div className="brand-mark brand-mark-lg"><IconLogo size={26} color="#fff" /></div>
 
@@ -103,6 +117,7 @@ export function Login({ onKey, initialError }: { onKey: (code: string) => void; 
           </>
         )}
         <p className="faint login-by">{t("login.by", { name: CREATOR })}</p>
+      </div>
       </div>
     </div>
   );

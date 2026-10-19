@@ -134,7 +134,7 @@ export function ChatView({
   }, [initialQuestion, loading]);
 
   const suggestions = useMemo(() => {
-    const fromDocs = docs.flatMap((d) => d.suggested_questions.slice(0, 2)).slice(0, 4);
+    const fromDocs = [...new Set(docs.flatMap((d) => d.suggested_questions.slice(0, 2)))].slice(0, 4);
     return fromDocs.length ? fromDocs : [t("chat.sugg_1"), t("chat.sugg_2"), t("chat.sugg_3")];
   }, [docs, t]);
 
