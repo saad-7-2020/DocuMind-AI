@@ -31,6 +31,10 @@ class ScriptedLLM:
 def echo_first_source(messages: list[Message]) -> str:
     """Answer with the first sentence of source S1, citing it. Good enough to test the
     plumbing end to end (IDs, pages, citations) without a real model."""
+    if "aucune recherche documentaire" in messages[-1]["content"]:
+        return json.dumps({"answer_type": "smalltalk", "answer": "Bonjour ! Je suis DocuMind AI (réponse simulée). "
+                           "Posez-moi une question sur vos documents.", "citations": [],
+                           "insufficient_evidence": False, "reason": None})
     m = _SOURCE.search(messages[-1]["content"])
     if not m:
         return json.dumps({"answer": None, "citations": [], "insufficient_evidence": True,
@@ -51,9 +55,11 @@ class EchoLightLLM:
     def generate(self, messages: list[Message], schema_name: str, schema: dict) -> LLMResult:
         self.calls.append((schema_name, messages))
         user = messages[-1]["content"]
-        if schema_name == "standalone_question":
-            m = re.search(r"Dernière question : (.*)\Z", user, re.S)
-            content = json.dumps({"standalone_question": (m.group(1) if m else user).strip()})
+        if schema_name == "route_message":
+            m = re.search(r"Dernier message : (.*)\Z", user, re.S)
+            question = (m.group(1) if m else user).strip()
+            greeting = question.lower().strip(" !?.") in {"hi", "hello", "bonjour", "salut", "merci", "thanks", "hey"}
+            content = json.dumps({"needs_documents": not greeting, "standalone_question": question})
         elif schema_name == "document_description":
             text = re.sub(r"\s+", " ", user.split("Texte du document :", 1)[-1]).strip()
             words = text.split()

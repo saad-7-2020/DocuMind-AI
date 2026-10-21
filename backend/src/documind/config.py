@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     llm_model: str = "openai/gpt-oss-120b"
     llm_structured_mode: Literal["json_schema", "json_object"] = "json_schema"
     llm_reasoning_effort: str | None = "low"
-    llm_temperature: float = 0.0
-    llm_max_output_tokens: int = 1500
+    llm_temperature: float = 0.5
+    llm_max_output_tokens: int = 2000
     llm_timeout_s: float = 60.0
     llm_max_retries: int = Field(default=3, ge=1, le=5)
     # A small, fast model for light jobs (rewriting follow-up questions, describing documents). It has its
@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     creator_url: str = ""
 
     # Chats
-    chat_history_messages: int = Field(default=6, ge=0, le=20)  # recent messages used to understand follow-ups
+    chat_history_messages: int = Field(default=10, ge=0, le=30)  # the last 5 exchanges: the assistant's memory
 
     # Demo accounts: anyone can create one ("Try the demo"); each gets a long random access code.
     # They are limited and expire, to protect the free storage and free AI allowances.

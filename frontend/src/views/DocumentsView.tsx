@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   api, ApiError, describeError, formatBytes, formatDate, type DocStatus, type DocumentSummary, type Me,
 } from "../api";
+import { useConfirm } from "../components/Confirm";
 import type { ViewerTarget } from "../components/DocumentViewer";
 import {
   IconCheck, IconChat, IconEye, IconFiles, IconRefresh, IconSearch, IconSparkles, IconTrash, IconUpload, IconX,
@@ -44,6 +45,7 @@ export function DocumentsView({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps -- fresh list on every visit
 
@@ -97,7 +99,13 @@ export function DocumentsView({
   }
 
   async function remove(doc: DocumentSummary) {
-    if (!confirm(t("docs.delete_confirm", { name: doc.filename }))) return;
+    const ok = await confirm({
+      title: t("docs.delete_title"),
+      message: t("docs.delete_confirm", { name: doc.filename }),
+      confirmLabel: t("docs.delete"),
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.deleteDocument(doc.id);
       toast("success", t("docs.delete_started"));

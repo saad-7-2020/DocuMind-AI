@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from documind.api.query_response import build_query_response
 from documind.api.schemas import QueryResponse
-from documind.chat.rewrite import QuestionRewriter
+from documind.chat.router import QuestionRouter
 from documind.config import Settings
 from documind.db.session import transaction
 from documind.db.tables import Conversation, Message
@@ -32,11 +32,11 @@ def shorten_title(question: str) -> str:
 
 
 class ChatService:
-    def __init__(self, sf: sessionmaker[Session], pipeline: QueryPipeline, rewriter: QuestionRewriter,
+    def __init__(self, sf: sessionmaker[Session], pipeline: QueryPipeline, router: QuestionRouter,
                  settings: Settings) -> None:
         self.sf = sf
         self.pipeline = pipeline
-        self.rewriter = rewriter
+        self.router = router
         self.settings = settings
 
     # ── conversations ────────────────────────────────────
@@ -89,15 +89,20 @@ class ChatService:
         history = self._history(past)
 
         asked_at = datetime.now(UTC)
-        rewrite = self.rewriter.rewrite(history, question)
+        route = self.router.route(history, question)
         scope = [uuid.UUID(d) for d in conv.document_ids] if conv.document_ids else None
         filters = SearchFilters(owner_id=owner_id, document_ids=scope)
-        result = self.pipeline.run(rewrite.question, filters, top_k, history)
-        response = build_query_response(result, debug, rewrite.question if rewrite.rewritten else None)
-        if rewrite.rewritten:  # count the extra small-model call in the totals shown to the user
-            response.usage.input_tokens += rewrite.input_tokens
-            response.usage.output_tokens += rewrite.output_tokens
-            response.latency_ms["rewrite"] = rewrite.latency_ms
+        result = None
+        if not route.needs_documents:
+            result = self.pipeline.run_direct(question, history)
+            if result.generated.answer_type not in ("assistant", "smalltalk"):
+                result = None  # the router was wrong: this did need the documents, so search after all
+        if result is None:
+            result = self.pipeline.run(route.question if route.needs_documents else question, filters, top_k, history)
+        response = build_query_response(result, debug, route.question if route.rewritten else None)
+        response.usage.input_tokens += route.input_tokens  # count the small-model routing call too
+        response.usage.output_tokens += route.output_tokens
+        response.latency_ms["route"] = route.latency_ms
 
         g = result.generated
         answered_at = datetime.now(UTC)

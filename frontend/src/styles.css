@@ -33,20 +33,20 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f5fb;
-  --bg-elev: #ffffff;
-  --panel: rgba(255, 255, 255, 0.82);
-  --panel-solid: #ffffff;
-  --panel-hover: #f1f3f9;
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.16);
-  --text: #141827;
-  --text-muted: #565e78;
-  --text-faint: #8a91a8;
-  --accent-soft: rgba(124, 108, 255, 0.1);
-  --accent-text: #5a49e8;
-  --highlight: rgba(250, 204, 21, 0.45);
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 30px -18px rgba(15, 23, 42, 0.22);
+  --bg: #dfe3ec;
+  --bg-elev: #e9ecf3;
+  --panel: rgba(238, 241, 247, 0.86);
+  --panel-solid: #eef1f7;
+  --panel-hover: #e0e4ee;
+  --border: rgba(30, 41, 70, 0.12);
+  --border-strong: rgba(30, 41, 70, 0.22);
+  --text: #1b2236;
+  --text-muted: #4d556e;
+  --text-faint: #7a8199;
+  --accent-soft: rgba(124, 108, 255, 0.13);
+  --accent-text: #4f3fd6;
+  --highlight: rgba(250, 204, 21, 0.4);
+  --shadow: 0 1px 2px rgba(20, 28, 50, 0.06), 0 14px 30px -18px rgba(20, 28, 50, 0.28);
   color-scheme: light;
 }
 
@@ -547,3 +547,16 @@ h1, h2, h3 { letter-spacing: -0.02em; }
   .greeting .suggestions { grid-template-columns: 1fr; }
   .onboard { padding: 24px; }
 }
+
+/* ── Confirmation modal ────────────────────────────────── */
+.modal-scrim { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(4, 6, 12, 0.62); backdrop-filter: blur(4px); animation: fade 0.15s ease; }
+.modal { width: min(420px, 100%); padding: 26px 26px 22px; text-align: center; background: var(--panel-solid); box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.7); }
+.modal-icon { width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 14px; display: grid; place-items: center; background: var(--warn-soft); color: var(--warn); }
+.modal-icon.danger { background: var(--danger-soft); color: var(--danger); }
+.modal h2 { margin: 0 0 8px; font-size: 19px; }
+.modal p { margin: 0 0 22px; color: var(--text-muted); overflow-wrap: anywhere; }
+.modal-actions { display: flex; gap: 10px; justify-content: center; }
+.modal-actions .btn { min-width: 120px; padding: 10px 16px; }
+.btn-danger-solid { background: var(--danger); border-color: transparent; color: #fff; }
+.btn-danger-solid:hover:not(:disabled) { background: var(--danger); filter: brightness(1.08); }
+@media (prefers-reduced-motion: reduce) { .modal-scrim { animation: none; } }

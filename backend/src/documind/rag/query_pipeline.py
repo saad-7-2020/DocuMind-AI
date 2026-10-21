@@ -38,6 +38,17 @@ class QueryPipeline:
         t1 = time.perf_counter()
         generated = self.answers.answer(question, retrieved, history)
         t2 = time.perf_counter()
+        return self._result(generated, retrieved, t0, t1, t2, top_k)
+
+    def run_direct(self, question: str, history: list[dict[str, str]] | None = None) -> QueryResult:
+        """Answer without searching the documents (greetings, questions about the assistant, rewording...)."""
+        t0 = time.perf_counter()
+        generated = self.answers.answer(question, [], history, searched=False)
+        t1 = time.perf_counter()
+        return self._result(generated, [], t0, t0, t1, 0)
+
+    def _result(self, generated: GeneratedAnswer, retrieved: list[RetrievedChunk], t0: float, t1: float,
+                t2: float, top_k: int) -> QueryResult:
         return QueryResult(
             query_id=uuid.uuid4(),
             generated=generated,

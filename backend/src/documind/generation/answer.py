@@ -25,6 +25,7 @@ from documind.generation.llm.base import LLMProvider, LLMResult, Message
 from documind.generation.prompts import (
     ANSWER_SCHEMA,
     HISTORY_HEADER_FR,
+    NO_SEARCH_FR,
     NO_SOURCES_FR,
     REPAIR_TEMPLATE_FR,
     USER_TEMPLATE_FR,
@@ -33,7 +34,7 @@ from documind.generation.prompts import (
 )
 
 AnswerType = Literal["document", "assistant", "smalltalk", "insufficient"]
-HISTORY_TURN_CHARS = 600
+HISTORY_TURN_CHARS = 900
 
 
 class LLMCitation(BaseModel):
@@ -88,12 +89,13 @@ class AnswerService:
         self.system_prompt = build_system_prompt(identity or Identity())
 
     def answer(self, question: str, chunks: list[RetrievedChunk],
-               history: list[dict[str, str]] | None = None) -> GeneratedAnswer:
+               history: list[dict[str, str]] | None = None, searched: bool = True) -> GeneratedAnswer:
         sources = select_sources(chunks, self.max_chunks, self.max_tokens)
+        no_sources = NO_SOURCES_FR if searched else NO_SEARCH_FR
         messages: list[Message] = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": USER_TEMPLATE_FR.format(
-                sources=render_sources(sources) if sources else NO_SOURCES_FR,
+                sources=render_sources(sources) if sources else no_sources,
                 history=_render_history(history), question=question)},
         ]
         out = GeneratedAnswer(None, False, None, [], sources)

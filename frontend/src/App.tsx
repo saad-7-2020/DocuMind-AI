@@ -4,6 +4,7 @@ import {
   type Conversation, type DocumentSummary, type Health, type Me,
 } from "./api";
 import { ChatList } from "./components/ChatList";
+import { useConfirm } from "./components/Confirm";
 import { DocumentViewer, type ViewerTarget } from "./components/DocumentViewer";
 import { IconChat, IconFiles, IconLogo, IconLogout, IconMenu, IconMoon, IconSettings, IconSun, IconX } from "./components/Icons";
 import { LangSwitch } from "./components/LangSwitch";
@@ -39,6 +40,7 @@ function loadTheme(): Theme {
 export function App() {
   const { t } = useI18n();
   const toast = useToast();
+  const confirm = useConfirm();
   const [apiKey, setKey] = useState(getApiKey());
   const [magicError, setMagicError] = useState<string | undefined>();
   const [magicBusy, setMagicBusy] = useState(() => codeFromHash() !== null);
@@ -187,7 +189,13 @@ export function App() {
   }
 
   async function deleteChat(c: Conversation) {
-    if (!confirm(t("chat.delete_confirm", { title: c.title || t("chat.untitled") }))) return;
+    const ok = await confirm({
+      title: t("chat.delete_title"),
+      message: t("chat.delete_confirm", { title: c.title || t("chat.untitled") }),
+      confirmLabel: t("chat.delete"),
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.deleteConversation(c.id);
       setChats((all) => all.filter((x) => x.id !== c.id));

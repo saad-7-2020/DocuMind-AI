@@ -93,17 +93,20 @@ def test_a_message_is_stored_with_its_citations_and_names_the_chat(chat_env, con
     detail = client.get(f"/v1/conversations/{chat['id']}", headers=headers).json()
     assert [m["role"] for m in detail["messages"]] == ["user", "assistant"]
     stored = detail["messages"][1]["response"]
-    assert stored["citations"][0]["page_end"] >= 1 and stored["model"]["prompt_version"] == "answer-fr-v2"
+    assert stored["citations"][0]["page_end"] >= 1 and stored["model"]["prompt_version"] == "answer-fr-v3"
 
 
 def test_follow_up_questions_are_rewritten_using_the_history(chat_env, contract_pdf):
     seen = []
 
     def light(messages):
-        if "Texte du document" in messages[-1]["content"]:  # the document description, not a rewrite
+        if "Texte du document" in messages[-1]["content"]:  # the document description, not a routing call
             return json.dumps({"summary": "", "keywords": [], "suggested_questions": []})
         seen.append(messages[-1]["content"])
-        return json.dumps({"standalone_question": "Quel est le prix annuel de la maintenance ?"})
+        if "Historique" not in messages[-1]["content"]:
+            return json.dumps({"needs_documents": True, "standalone_question": "Quelle est la durée du contrat ?"})
+        return json.dumps({"needs_documents": True,
+                           "standalone_question": "Quel est le prix annuel de la maintenance ?"})
 
     main = ScriptedLLM(echo_first_source)
     client, container, headers = chat_env(llm=main, light_llm=ScriptedLLM(light))
@@ -111,12 +114,12 @@ def test_follow_up_questions_are_rewritten_using_the_history(chat_env, contract_
     chat = new_chat(client, headers)
 
     first = send(client, headers, chat["id"], "Quelle est la durée du contrat ?").json()
-    assert seen == [], "no history yet: nothing to rewrite"
+    assert len(seen) == 1 and "Historique" not in seen[0], "the first message is routed without history"
     assert first["assistant_message"]["response"]["standalone_question"] is None
 
     second = send(client, headers, chat["id"], "Et le prix ?").json()["assistant_message"]["response"]
-    assert len(seen) == 1 and "Quelle est la durée du contrat ?" in seen[0]
-    assert "Dernière question : Et le prix ?" in seen[0]
+    assert len(seen) == 2 and "Quelle est la durée du contrat ?" in seen[1]
+    assert "Dernier message : Et le prix ?" in seen[1]
     assert second["standalone_question"] == "Quel est le prix annuel de la maintenance ?"
     final_prompt = main.calls[-1][-1]["content"]
     assert "Question : Quel est le prix annuel de la maintenance ?" in final_prompt, "retrieval uses the rewrite"
@@ -204,3 +207,45 @@ def test_question_validation(chat_env):
     assert send(client, headers, chat["id"], "").status_code == 422
     assert send(client, headers, chat["id"], "x" * 2001).status_code == 400
     assert send(client, headers, chat["id"], "   ").status_code in (400, 422)
+
+
+def test_a_greeting_is_answered_without_searching_the_documents(chat_env, contract_pdf):
+    greeting = typed("smalltalk", "Bonjour ! Ravi de vous voir. Comment puis-je vous aider avec vos documents ?")
+    main = ScriptedLLM([greeting])
+    client, container, headers = chat_env(llm=main)
+    upload_and_index(client, container, headers, contract_pdf)
+    chat = new_chat(client, headers)
+    r = send(client, headers, chat["id"], "hi").json()["assistant_message"]["response"]
+    assert r["answer_type"] == "smalltalk" and r["citations"] == [] and not r["abstained"]
+    assert r["latency_ms"]["retrieval"] == 0 and r["diagnostics"] is None
+    assert "aucune recherche documentaire" in main.calls[0][-1]["content"]
+
+
+def test_if_the_router_is_wrong_the_documents_are_searched_after_all(chat_env, contract_pdf):
+    def light(messages):
+        if "Texte du document" in messages[-1]["content"]:
+            return json.dumps({"summary": "", "keywords": [], "suggested_questions": []})
+        return json.dumps({"needs_documents": False, "standalone_question": "x"})
+
+    insufficient = typed("insufficient", None, reason="Je ne trouve pas cela dans le message.")
+    cited = typed("document", "Le préavis est de trente jours [S1].",
+                  [{"source_id": "S1", "quote": "préavis de trente (30) jours"}])
+    main = ScriptedLLM([insufficient, cited])
+    client, container, headers = chat_env(llm=main, light_llm=ScriptedLLM(light))
+    upload_and_index(client, container, headers, contract_pdf)
+    chat = new_chat(client, headers)
+    exchange = send(client, headers, chat["id"], "Quel est le préavis de résiliation ?").json()
+    r = exchange["assistant_message"]["response"]
+    assert r["answer_type"] == "document" and r["citations"], "second pass searched and cited"
+    assert len(main.calls) == 2
+
+
+def test_the_assistant_remembers_the_last_five_exchanges(chat_env):
+    main = ScriptedLLM([typed("smalltalk", "ok")])
+    client, _, headers = chat_env(llm=main)
+    chat = new_chat(client, headers)
+    for i in range(7):
+        send(client, headers, chat["id"], f"message numéro {i}")
+    prompt = main.calls[-1][-1]["content"]
+    assert "message numéro 5" in prompt and "message numéro 1" in prompt, "the last 5 exchanges are in context"
+    assert "message numéro 0" not in prompt, "older ones are not"

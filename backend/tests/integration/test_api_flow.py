@@ -54,7 +54,7 @@ def test_pdf_upload_ingest_and_query_cites_correct_page(client, container, alice
     assert top["document_id"] == body["document_id"]
     assert top["page_start"] == 3, "the termination clause is on page 3"
     assert out["diagnostics"]["dense"][0]["in_context"] is True
-    assert out["model"]["prompt_version"] == "answer-fr-v2"
+    assert out["model"]["prompt_version"] == "answer-fr-v3"
 
     page = client.get(f"/v1/documents/{body['document_id']}/pages/3", headers=alice).json()
     assert "Résiliation" in page["text"] and page["extraction_method"] == "text_layer"

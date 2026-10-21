@@ -13,7 +13,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from documind.accounts.service import AccountService
-from documind.chat.rewrite import QuestionRewriter
+from documind.chat.router import QuestionRouter
 from documind.chat.service import ChatService
 from documind.chunking.chunker import ChunkerConfig, RecursiveChunker
 from documind.config import Settings
@@ -172,7 +172,7 @@ def build_container(
     identity = Identity(settings.app_name, settings.creator_name, settings.creator_url)
     answers = AnswerService(llm, settings.context_max_chunks, settings.context_max_tokens, identity)
     pipeline = QueryPipeline(DenseRetriever(sf, embedder), answers, embedder.model_id)
-    chats = ChatService(sf, pipeline, QuestionRewriter(light_llm), settings)
+    chats = ChatService(sf, pipeline, QuestionRouter(light_llm), settings)
     accounts = AccountService(sf, blobs, settings)
     worker = Worker(queue, indexing, settings.job_timeout_s, settings.worker_poll_interval_s)
     return Container(settings, engine, sf, blobs, embedder, llm, light_llm, queue, indexing, pipeline, chats,
