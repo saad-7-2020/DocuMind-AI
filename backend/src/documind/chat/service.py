@@ -8,6 +8,7 @@ Sending a message runs the same RAG pipeline as /v1/query, but first turns a fol
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
@@ -19,7 +20,7 @@ from documind.chat.router import QuestionRouter
 from documind.config import Settings
 from documind.db.session import transaction
 from documind.db.tables import Conversation, Message
-from documind.domain.errors import NotFound
+from documind.domain.errors import NotFound, RequestCancelled
 from documind.domain.models import SearchFilters
 from documind.rag.query_pipeline import QueryPipeline
 
@@ -84,12 +85,17 @@ class ChatService:
 
     # ── sending a message ────────────────────────────────
     def send(self, owner_id: uuid.UUID, conversation_id: uuid.UUID, question: str, top_k: int,
-             debug: bool) -> tuple[Conversation, Message, Message]:
+             debug: bool, cancelled: Callable[[], bool] | None = None) -> tuple[Conversation, Message, Message]:
+        """Answer a message. `cancelled()` is checked between steps: once the visitor has pressed Stop,
+        the remaining (paid, slow) steps are skipped and nothing is saved."""
+        stop = cancelled or (lambda: False)
         conv, past = self.get(owner_id, conversation_id)
         history = self._history(past)
 
         asked_at = datetime.now(UTC)
         route = self.router.route(history, question)
+        if stop():
+            raise RequestCancelled()
         scope = [uuid.UUID(d) for d in conv.document_ids] if conv.document_ids else None
         filters = SearchFilters(owner_id=owner_id, document_ids=scope)
         result = None
@@ -99,6 +105,8 @@ class ChatService:
                 result = None  # the router was wrong: this did need the documents, so search after all
         if result is None:
             result = self.pipeline.run(route.question if route.needs_documents else question, filters, top_k, history)
+        if stop():
+            raise RequestCancelled()
         response = build_query_response(result, debug, route.question if route.rewritten else None)
         response.usage.input_tokens += route.input_tokens  # count the small-model routing call too
         response.usage.output_tokens += route.output_tokens

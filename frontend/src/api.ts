@@ -189,7 +189,8 @@ async function request<T>(path: string, init: RequestInit = {}, key = getApiKey(
   let res: Response;
   try {
     res = await fetch(API_BASE + path, { ...init, headers });
-  } catch {
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e; // the visitor pressed Stop
     throw new ApiError(0, "network_error", translate("err.network_error"));
   }
   if (!res.ok) throw await toApiError(res);
@@ -236,8 +237,8 @@ export const api = {
   updateConversation: (id: string, body: { title?: string; document_ids?: string[]; clear_scope?: boolean }) =>
     request<Conversation>(`/v1/conversations/${id}`, { method: "PATCH", ...json(body) }),
   deleteConversation: (id: string) => request<void>(`/v1/conversations/${id}`, { method: "DELETE" }),
-  sendMessage: (id: string, question: string, debug = false) =>
-    request<Exchange>(`/v1/conversations/${id}/messages`, { method: "POST", ...json({ question, debug }) }),
+  sendMessage: (id: string, question: string, debug = false, signal?: AbortSignal) =>
+    request<Exchange>(`/v1/conversations/${id}/messages`, { method: "POST", signal, ...json({ question, debug }) }),
 
   /** Upload with byte-level progress (fetch can't report upload progress; XHR can). */
   uploadDocument(

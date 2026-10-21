@@ -82,6 +82,12 @@ class DemoUnavailable(DocuMindError):
     code, status, title = "demo_unavailable", 429, "Demo accounts are temporarily unavailable"
 
 
+class RequestCancelled(DocuMindError):
+    """The visitor pressed Stop (or closed the page): the work is abandoned and nothing is saved."""
+
+    code, status, title = "request_cancelled", 499, "Request cancelled"
+
+
 class Conflict(DocuMindError):
     code, status, title = "conflict", 409, "Conflict"
 

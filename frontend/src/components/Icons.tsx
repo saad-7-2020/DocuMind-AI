@@ -39,6 +39,7 @@ export const IconLogo = (p: P) => (
     <circle cx="12.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
   </Svg>
 );
+export const IconStop = (p: P) => <Svg {...p}><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" /></Svg>;
 export const IconPlus = (p: P) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>;
 export const IconPencil = (p: P) => <Svg {...p}><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16Z" /><path d="m14 6 4 4" /></Svg>;
 export const IconLogout = (p: P) => <Svg {...p}><path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3M16 8l4 4-4 4M20 12H9" /></Svg>;

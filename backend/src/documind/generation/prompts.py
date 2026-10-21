@@ -15,6 +15,7 @@ class Identity:
     app_name: str = "DocuMind AI"
     creator_name: str = "Saad"
     creator_url: str = ""
+    creator_bio: str = ""
 
 
 _SYSTEM_TEMPLATE_FR = """Tu es {app_name}, un assistant documentaire.
@@ -26,6 +27,7 @@ IDENTITÉ (réponds à partir de ces faits uniquement, sans rien inventer d'autr
 - Fonctionnement (seulement si on te le demande) : recherche sémantique avec le modèle bge-m3, base PostgreSQL avec pgvector, modèle de langage via Groq, interface web React.
 - Limites : tu ne connais que les documents de l'utilisateur et tu peux te tromper ; invite à vérifier les citations.
 Si on te pose une autre question sur toi (âge, vie privée, etc.), dis simplement que tu ne le sais pas.
+{creator_section}
 
 TON ET STYLE :
 - Professionnel, chaleureux et rassurant : tu parles comme un collègue compétent et bienveillant. Phrases simples et claires, sans jargon inutile ni flatterie excessive. Au plus un emoji, et rarement.
@@ -46,7 +48,15 @@ SORTIE : uniquement un objet JSON avec exactement ces champs : "answer_type", "a
 
 def build_system_prompt(identity: Identity) -> str:
     creator = identity.creator_name + (f" ({identity.creator_url})" if identity.creator_url else "")
-    return _SYSTEM_TEMPLATE_FR.format(app_name=identity.app_name, creator=creator)
+    section = ""
+    if identity.creator_bio:
+        section = (
+            f"À PROPOS DE TON CRÉATEUR, {identity.creator_name} (si on te demande qui il est, son parcours, ses "
+            "compétences ou ses projets, réponds à partir de ce texte uniquement, en le reformulant naturellement "
+            "dans la langue de la question ; n'invente rien d'autre, et ne donne ni coordonnées personnelles ni "
+            'détails privés ; "answer_type" = "assistant") :\n' + identity.creator_bio + "\n"
+        )
+    return _SYSTEM_TEMPLATE_FR.format(app_name=identity.app_name, creator=creator, creator_section=section)
 
 
 NO_SOURCES_FR = "(aucune source disponible)"
@@ -69,7 +79,7 @@ Renvoie uniquement l'objet JSON corrigé."""
 
 ROUTE_SYSTEM_FR = """Tu aiguilles les messages d'un assistant documentaire. À partir de l'historique et du dernier message de l'utilisateur, décide :
 - needs_documents = true seulement si le message demande une information qui se trouve dans les documents de l'utilisateur : faits, chiffres, clauses, résumé ou comparaison de documents, « que dit le document sur… », y compris une suite comme « et le prix ? » qui porte sur un document.
-- needs_documents = false pour : salutation, remerciement, politesse, bavardage, question sur l'assistant (qui es-tu, qui t'a créé, ton objectif, ce que tu sais faire), demande de reformuler, raccourcir, développer, traduire ou expliquer ta réponse précédente, question sur la conversation elle-même.
+- needs_documents = false pour : salutation, remerciement, politesse, bavardage, question sur l'assistant ou sur son créateur (qui es-tu, qui t'a créé, qui est ton créateur, ton objectif, ce que tu sais faire), demande de reformuler, raccourcir, développer, traduire ou expliquer ta réponse précédente, question sur la conversation elle-même.
 - standalone_question : si needs_documents est true, écris UNE question autonome, compréhensible sans l'historique, dans la même langue : remplace « il », « ça », « et le prix ? » par ce qu'ils désignent, n'ajoute aucune information et ne réponds pas. Sinon, recopie le message tel quel.
 Réponds uniquement en JSON."""
 

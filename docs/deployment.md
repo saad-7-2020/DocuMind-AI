@@ -151,9 +151,9 @@ Close the terminal afterwards so the secrets don't linger in your session.
    | `LOG_LEVEL` | `INFO` |
    | `IP_HASH_SALT` | a long random text (for example 40 random characters; never reuse a password) |
    | `CRON_SECRET` | another long random text: Vercel sends it to the daily cleanup job that deletes expired demo accounts |
-   | `CREATOR_NAME` | the name the assistant gives when asked who created it (default `Saad`) |
+   | `CREATOR_NAME` | the name the assistant gives when asked who created it (default `Saad AIT LHADJ LAHCEN`) |
 
-   Optional: `LLM_LIGHT_MODEL` (small model for rewriting follow-ups and describing documents, default
+   Optional: `CREATOR_BIO` (the text the assistant uses to talk about its creator; the default is built in), `LLM_LIGHT_MODEL` (small model for rewriting follow-ups and describing documents, default
    `openai/gpt-oss-20b`), and the `DEMO_*` limits listed in [backend/.env.example](../backend/.env.example).
 
    Leave `CORS_ORIGINS` for step 7.

@@ -249,3 +249,19 @@ def test_the_assistant_remembers_the_last_five_exchanges(chat_env):
     prompt = main.calls[-1][-1]["content"]
     assert "message numéro 5" in prompt and "message numéro 1" in prompt, "the last 5 exchanges are in context"
     assert "message numéro 0" not in prompt, "older ones are not"
+
+
+def test_a_stopped_request_skips_the_remaining_steps_and_saves_nothing(chat_env):
+    import uuid
+
+    from documind.domain.errors import RequestCancelled
+
+    main = ScriptedLLM([typed("smalltalk", "ok")])
+    client, container, headers = chat_env(llm=main)
+    chat = new_chat(client, headers)
+    with container.sf() as s:
+        owner_id = s.execute(text("SELECT id FROM users LIMIT 1")).scalar()
+    with pytest.raises(RequestCancelled):
+        container.chats.send(owner_id, uuid.UUID(chat["id"]), "Bonjour", 4, False, cancelled=lambda: True)
+    assert main.calls == [], "the answer model was never called"
+    assert client.get(f"/v1/conversations/{chat['id']}", headers=headers).json()["messages"] == []

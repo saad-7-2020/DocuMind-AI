@@ -4,7 +4,7 @@ import {
   type ChatMessage, type Citation, type Conversation, type DocumentSummary, type QueryResponse,
 } from "../api";
 import type { ViewerTarget } from "../components/DocumentViewer";
-import { IconAlert, IconClock, IconCpu, IconFiles, IconLogo, IconSend, IconSliders } from "../components/Icons";
+import { IconAlert, IconClock, IconCpu, IconFiles, IconLogo, IconSend, IconSliders, IconStop } from "../components/Icons";
 import { useI18n } from "../i18n";
 
 /** One line in the thread: a saved message, or one still being answered. */
@@ -55,6 +55,7 @@ export function ChatView({
   const [showOptions, setShowOptions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const sending = turns.some((x) => x.pending);
 
   // Open an existing chat: load its messages and remembered scope.
@@ -96,17 +97,21 @@ export function ChatView({
     setInput("");
     if (textRef.current) textRef.current.style.height = "auto";
     setTurns((all) => [...all, { id, question, pending: true, scopeLabel }]);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let createdHere: string | null = null;
     try {
       let cid = convId;
       if (!cid) {
         const created = await api.createConversation({ document_ids: scope.length ? scope : null });
         cid = created.id;
+        createdHere = cid;
         setConvId(cid);
-        onConversation(created);
       } else {
         await api.updateConversation(cid, scope.length ? { document_ids: scope } : { clear_scope: true });
       }
-      const exchange = await api.sendMessage(cid, question, debug);
+      if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const exchange = await api.sendMessage(cid, question, debug, controller.signal);
       onConversation(exchange.conversation); // the title appears after the first question
       setTurns((all) => all.map((x) => x.id === id
         ? { ...x, id: exchange.assistant_message.id, pending: false, fresh: true,
@@ -114,6 +119,17 @@ export function ChatView({
         : x));
       onUsage();
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        // Stopped by the visitor: nothing was saved. Take the question back so it can be edited and resent.
+        setTurns((all) => all.filter((x) => x.id !== id));
+        setInput(question);
+        if (createdHere) {
+          api.deleteConversation(createdHere).catch(() => {}); // don't leave an empty chat behind
+          setConvId(null);
+        }
+        textRef.current?.focus();
+        return;
+      }
       if (onAuthError(e)) return;
       const code = e instanceof ApiError ? e.code : "error";
       setTurns((all) => all.map((x) => (x.id === id ? { ...x, pending: false, error: { code, message: describeError(e) } } : x)));
@@ -121,6 +137,8 @@ export function ChatView({
     }
     textRef.current?.focus();
   }
+
+  const stop = () => abortRef.current?.abort();
 
   // A question handed over from the Documents page ("ask this question").
   const askedInitial = useRef(false);
@@ -216,9 +234,15 @@ export function ChatView({
               )}
             </div>
             <div className="spacer" />
-            <button className="btn btn-primary" disabled={!input.trim() || sending} aria-label={t("chat.send")}>
-              <IconSend size={16} /> {t("chat.send")}
-            </button>
+            {sending ? (
+              <button type="button" className="btn btn-stop" onClick={stop} aria-label={t("chat.stop")}>
+                <IconStop size={14} /> {t("chat.stop")}
+              </button>
+            ) : (
+              <button className="btn btn-primary" disabled={!input.trim()} aria-label={t("chat.send")}>
+                <IconSend size={16} /> {t("chat.send")}
+              </button>
+            )}
           </div>
         </form>
         <div className="composer-hint">{t("chat.hint")}</div>

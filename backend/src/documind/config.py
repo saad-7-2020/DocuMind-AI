@@ -76,8 +76,23 @@ class Settings(BaseSettings):
 
     # Who the assistant says it is (shown when a user asks "who are you / who made you?").
     app_name: str = "DocuMind AI"
-    creator_name: str = "Saad"
+    creator_name: str = "Saad AIT LHADJ LAHCEN"
     creator_url: str = ""
+    creator_bio: str = (
+        "Saad AIT LHADJ LAHCEN is an AI Engineer with a background in Applied Mathematics and Data Science, "
+        "focused on designing and building intelligent systems that solve real-world problems. His technical "
+        "portfolio showcases hands-on projects across Machine Learning, Large Language Models (LLMs), "
+        "Retrieval-Augmented Generation (RAG), AI agents, Natural Language to SQL, and data-driven "
+        "applications. He enjoys taking projects from concept to implementation, including data processing, "
+        "model development, backend engineering, database design, API development, and deployment. His work "
+        "combines mathematical reasoning, software engineering, and modern AI technologies to create "
+        "practical, reliable, and scalable solutions. Through his projects he explores intelligent "
+        "automation, multi-agent architectures, business intelligence, document understanding, and the "
+        "integration of AI into existing workflows. He also focuses on evaluating system performance, "
+        "improving reliability, and understanding the engineering decisions behind each solution. His "
+        "portfolio reflects his continuous learning, technical problem-solving approach, and commitment to "
+        "building AI systems that deliver measurable value."
+    )
 
     # Chats
     chat_history_messages: int = Field(default=10, ge=0, le=30)  # the last 5 exchanges: the assistant's memory

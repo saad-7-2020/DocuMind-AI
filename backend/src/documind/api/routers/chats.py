@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 import uuid
 
-from fastapi import APIRouter, Response
+import anyio
+from fastapi import APIRouter, Request, Response
 
 from documind.api.deps import ContainerDep, UserDep
 from documind.api.schemas import (
@@ -66,8 +68,8 @@ def delete_conversation(conversation_id: uuid.UUID, container: ContainerDep, use
 
 
 @router.post("/{conversation_id}/messages", response_model=Exchange)
-def send_message(conversation_id: uuid.UUID, body: MessageCreate, container: ContainerDep,
-                 user: UserDep) -> Exchange:
+async def send_message(conversation_id: uuid.UUID, body: MessageCreate, request: Request, container: ContainerDep,
+                       user: UserDep) -> Exchange:
     settings = container.settings
     container.accounts.check_can_ask(user)
     question = body.question.strip()
@@ -76,6 +78,27 @@ def send_message(conversation_id: uuid.UUID, body: MessageCreate, container: Con
     if len(question) > settings.max_question_chars:
         raise BadRequest(f"Question is longer than {settings.max_question_chars} characters.")
     top_k = min(body.top_k or settings.context_max_chunks, settings.max_top_k)  # may narrow, never raise
-    conv, user_msg, assistant_msg = container.chats.send(user.id, conversation_id, question, top_k, body.debug)
+    # The pipeline runs in a worker thread; meanwhile we watch for the visitor pressing Stop (the browser
+    # drops the connection) and tell the pipeline, which then skips its remaining steps.
+    stopped = threading.Event()
+
+    async def watch_disconnect() -> None:
+        while not stopped.is_set():
+            if await request.is_disconnected():
+                stopped.set()
+                return
+            await anyio.sleep(0.2)
+
+    try:
+        async with anyio.create_task_group() as tasks:
+            tasks.start_soon(watch_disconnect)
+            try:
+                conv, user_msg, assistant_msg = await anyio.to_thread.run_sync(
+                    lambda: container.chats.send(user.id, conversation_id, question, top_k, body.debug,
+                                                 stopped.is_set))
+            finally:
+                tasks.cancel_scope.cancel()
+    except BaseExceptionGroup as group:  # task groups wrap errors; the API's handlers expect the original
+        raise group.exceptions[0] from None
     return Exchange(conversation=_conv_out(conv), user_message=_msg_out(user_msg),
                     assistant_message=_msg_out(assistant_msg))

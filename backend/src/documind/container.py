@@ -169,7 +169,7 @@ def build_container(
         sf, blobs, [PdfExtractor(settings.max_pages), TxtExtractor()], chunker, embedder, queue,
         DocumentDescriber(light_llm, sf),
     )
-    identity = Identity(settings.app_name, settings.creator_name, settings.creator_url)
+    identity = Identity(settings.app_name, settings.creator_name, settings.creator_url, settings.creator_bio)
     answers = AnswerService(llm, settings.context_max_chunks, settings.context_max_tokens, identity)
     pipeline = QueryPipeline(DenseRetriever(sf, embedder), answers, embedder.model_id)
     chats = ChatService(sf, pipeline, QuestionRouter(light_llm), settings)

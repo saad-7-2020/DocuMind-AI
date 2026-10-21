@@ -560,3 +560,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .btn-danger-solid { background: var(--danger); border-color: transparent; color: #fff; }
 .btn-danger-solid:hover:not(:disabled) { background: var(--danger); filter: brightness(1.08); }
 @media (prefers-reduced-motion: reduce) { .modal-scrim { animation: none; } }
+
+/* ── Stop button ───────────────────────────────────────── */
+.btn-stop { background: var(--panel-solid); border-color: var(--border-strong); color: var(--text); animation: fade 0.2s ease; }
+.btn-stop svg { color: var(--danger); }
+.btn-stop:hover:not(:disabled) { border-color: var(--danger); background: var(--danger-soft); }
